@@ -3,8 +3,8 @@
 #define SYMMETRICSPACERAFT_H
 
 // Constants
-const float PI {3.1415926f};     // Value of pi
-const float DEG {PI/180.0f};     // Degrees to radians conversion
+const float PI {3.1415926f};     // Value of pi---------------------, -
+const float DEG {PI/180.0f};     // Degrees to radians conversion---, rad/deg
 
 // Initial values
 const float phi_0 {0.0f};        // Initial roll angle--------------, rad
@@ -36,4 +36,4 @@ const float i_z {1.0f};           // Moment of inertia around z-axis, kg*m^2
 // Actuator limits
 const float tau_max {1.0f};       // Maximum torque-----------------, Nm
 
-#endif SYMMETRICSPACERAFT_H
+#endif // SYMMETRICSPACERAFT_H

@@ -1,8 +1,6 @@
 #include <iostream>
 #include <casadi/casadi.hpp>
-#include "optimizer.h"
-#include "symmetric_spacecraft.h"
-//#include "non_symmetric_spacecraft.h"
+#include <toac/symmetric_spacecraft.h>
 
 using namespace casadi;
 
@@ -22,7 +20,6 @@ MX F(const MX& x, const MX& u, const MX& dt) {
 
 int main() {
 
-    int n_stp {100};                      // number of control intervals
     Opti opti {Opti()};                   // Optimization problem
     Slice all;                            // Equivalent to the slice operation in Python
 
