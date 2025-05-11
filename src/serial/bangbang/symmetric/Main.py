@@ -3,6 +3,26 @@ import numpy as np
 from traj_opt import Optimizer
 import matplotlib.pyplot as plt
 
+def euler2quat(roll, pitch, yaw):
+    """
+    Convert Euler angles to quaternion.
+    """
+    cy = ca.cos(yaw * 0.5)
+    sy = ca.sin(yaw * 0.5)
+    cr = ca.cos(roll * 0.5)
+    sr = ca.sin(roll * 0.5)
+    cp = ca.cos(pitch * 0.5)
+    sp = ca.sin(pitch * 0.5)
+
+    q0 = cy * cr * cp + sy * sr * sp
+    q1 = cy * sr * cp - sy * cr * sp
+    q2 = cy * cr * sp + sy * sr * cp
+    q3 = sy * cr * cp - cy * sr * sp
+
+    q = ca.vertcat(q0, q1, q2, q3) # Quaternion [q0, q1, q2, q3]-----------------, -
+    q = q / ca.norm_2(q) # Normalize quaternion----------------------------, -
+    return q
+
 ### CONSTANTS AND PARAMETERS ###
 # Physical constants
 deg     = ca.pi / 180 # Degrees to radians-------------, rad/deg
@@ -41,44 +61,42 @@ tau_max = 1           # Maximum torque-----------------, Nm
 ### SYMBOLIC VARIABLES ###
 # States
 X   = ca.vertcat(
-    ca.MX.sym('phi'),   # Roll angle--------------, rad
-    ca.MX.sym('theta'), # Pitch angle-------------, rad
-    ca.MX.sym('psi'),   # Yaw angle---------------, rad
-    ca.MX.sym('wx'),    # Roll velocity-----------, rad/s
-    ca.MX.sym('wz'),    # Pitch velocity----------, rad/s
-    ca.MX.sym('wy'),    # Yaw velocity------------, rad/s
+    ca.SX.sym('q', 4),  # Quaternion [q0, q1, q2, q3], -
+    ca.SX.sym('w', 3),  # Angular rate [wx, wy, wz]--, rad/s
 )
-N_X = X.size1()         # Number of states--------, -
+N_X = X.size1()         # Number of states-----------, -
 
 # Controls
 U   = ca.vertcat(
-    ca.MX.sym('tau_x'), # Torque around the x axis, Nm
-    ca.MX.sym('tau_y'), # Torque around the y axis, Nm
-    ca.MX.sym('taw_z'), # Torque around the z axis, Nm
+    ca.SX.sym('tau', 3) # Torque---------------------, Nm
 )
-N_U = U.size1()         # Number of controls------, -
+N_U = U.size1()         # Number of controls---------, -
 
 # Time step
-dt  = ca.MX.sym('dt')   # Time step---------------, s
+dt  = ca.SX.sym('dt')   # Time step------------------, s
 
 ### DYNAMICS ###
-tau_x     = U[0]        # Torque around the x axis-----------, Nm              
-tau_y     = U[1]        # Torque around the y axis-----------, Nm             
-tau_z     = U[2]        # Torque around the z axis-----------, Nm
 
 # Dynamics equations
-phi       = X[0]        # Vertical position------------------, m   
-theta     = X[1]        # Horizontal velocity----------------, m/s 
-psi       = X[2]        # Vertical velocity------------------, m/s   
-phi_dot   = X[3]        # Angular velocity-------------------, rad/s  
-theta_dot = X[4]        # Horizontal acceleration------------, m/s^2
-psi_dot   = X[5]        # Lunar gravity----------------------, m/s^2    
-wx_dot    = (tau_x - (i_z -i_y)* / i_x # Vertical acceleration--------------, m/s^2
-wy_dot    = tau_y / i_y # Vertical acceleration--------------, m/s^2
-wz_dot    = tau_z / i_z # Vertical acceleration--------------, m/s^2
+q         = X[0:4]      # Quaternion-------------------------, -
+w         = X[4:7]      # Angular rate-----------------------, rad/s
+tau       = U[0:3]      # Torque-----------------------------, Nm
+
+S = ca.SX.zeros(3, 3) # Skew-symmetric matrix
+S[0, 1] = -w[2]
+S[0, 2] = w[1]
+S[1, 0] = w[2]
+S[1, 2] = -w[0]
+S[2, 0] = -w[1]
+S[2, 1] = w[0]
+
+I = ca.diag([i_x, i_y, i_z]) # Inertia matrix------------------, kg*m^2
+
+q_dot     = 0.5 * ca.mtimes(S, q) # Quaternion derivative----------------, -
+w_dot     = ca.inv(I) * (tau - ca.cross(w, ca.mtimes(I, w))) # Angular rate derivative----------------, rad/s
 
 # State derivatives
-X_dot     = ca.vertcat(phi_dot, theta_dot, psi_dot, wx_dot, wy_dot, wz_dot)
+X_dot     = ca.vertcat(q_dot, w_dot)
 
 # RK4 integration
 f         = ca.Function('f', [X, U], [X_dot], ["X", "U"], ["X_dot"]) # Continuous dynamics function  (X, U)------------> X_dot
@@ -86,14 +104,16 @@ F         = ca.Function('F', [X, U, dt], [rk4(f, X, U, dt)])         # Discretiz
 
 ### OPTIMIZATION SETUP ###
 # Final conditions [x, z, theta, vx, vz, wy, m_prop_used]
-X_f   = [phi_f, theta_f, psi_f, wx_f, wy_f, wz_f]
+q_f   = euler2quat(phi_f, theta_f, psi_f) # Final quaternion------------------, -
+X_f   = ca.vertcat(q_f, wx_f, wy_f, wz_f)
 
 # Initial conditions [x, z, theta, vx, vz, wy, m_prop_used]
-X_i   = [phi_0, theta_0, psi_0, wx_0, wy_0, wz_0]
+q_0   = euler2quat(phi_0, theta_0, psi_0) # Initial quaternion------------------, -
+X_0   = ca.vertcat(q_0, wx_0, wy_0, wz_0) # Initial state----------------------------, -
 
 # Control bounds [T_m_r, T_m_c, T_m_l, T_thr_r, T_thr_l, gimbal]
-lb_U  = [-tau_max, -tau_max, -tau_max] # Control lower bounds
-ub_U  = [ tau_max,  tau_max,  tau_max] # Control upper bounds
+lb_U  = ca.vertcat(-tau_max, -tau_max, -tau_max) # Control lower bounds
+ub_U  = ca.vertcat( tau_max,  tau_max,  tau_max) # Control upper bounds
 
-opt   = Optimizer(N_X, N_U, T_0, N_steps, f, F, X_i, X_f, lb_U, ub_U, lb_dt, ub_dt)
+opt   = Optimizer(N_X, N_U, T_0, N_steps, f, F, X_0, X_f, lb_U, ub_U, lb_dt, ub_dt)
 opt_X, opt_U, opt_X_dot, opt_T = opt.solve()
