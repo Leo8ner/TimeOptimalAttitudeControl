@@ -48,9 +48,14 @@ endif()
 # find the following packages
 find_package(Threads REQUIRED)
 
+add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp)
+target_include_directories(
+    toac PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac
+)
 # include header directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/toac
     SYSTEM ${IPOPT_INCLUDE_DIRS}
     SYSTEM ${CASADI_INCLUDE_DIR}
     ${CODE_GEN_INCLUDE_DIR})
@@ -61,21 +66,14 @@ link_directories(${LIBRARY_DIRS})
 # find all the header files
 file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
+file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
 
-#include_directories(${CMAKE_SOURCE_DIR}/include)
-
-add_library(toac STATIC src/lib/optimizer.cpp)
-
-# add_library(toac STATIC src/lib/optimizer.cpp src/lib/mylibrary2.cpp)
 
 add_executable(SerialBangbangSymmetric src/serial/bangbang/symmetric/main.cpp)
-target_link_libraries(SerialBangbangSymmetric PRIVATE toac)
 
 # Link the executable to the CasADi library
-target_link_libraries(SerialBangbangSymmetric PRIVATE ${CASADI_LIBRARIES})
-target_include_directories(SerialBangbangSymmetric PRIVATE ${CASADI_INCLUDE_DIRS})
+target_link_libraries(SerialBangbangSymmetric PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(SerialBangbangSymmetric PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 #add_executable(SerialBangbangAsymmetric src/serial/bangbang/asymmetric/main.cpp)
 #target_link_libraries(SerialBangbangAsymmetric PRIVATE toac)
-
-target_include_directories(toac PUBLIC ${CMAKE_SOURCE_DIR}/include)
