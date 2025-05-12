@@ -1,26 +1,23 @@
 #include <casadi/casadi.hpp>
 #include <toac/symmetric_spacecraft.h>
-//#include <toac/optimizer.h>
+#include <toac/dynamics.h>
+#include <toac/constraints.h>
 
 using namespace casadi;
 /*
-class Optimizer() {
+class Optimizer {
 
-private:
-    int n_X, n_U, n_stp;
-    double t_0;
+    int n_X, n_U, n_steps;
+    double T_guess;
     Function f, F;
-    DM x_0, x_f;
+    DM X_0, X_f;
     DM lb_U, ub_U, lb_dt, ub_dt;
 
 public:
-    Optimizer(const Optimizer&) = delete; // Disable copy constructor
-    Optimizer& operator=(const Optimizer&) = delete; // Disable copy assignment
-    Optimizer(Optimizer&&) = default; // Enable move constructor
-    Optimizer& operator=(Optimizer&&) = default; // Enable move assignment
-    Optimizer(int n_X, int n_U, double T_0, int n_stp, Function f, Function F, DM X_0, DM X_f, DM lb_U, DM ub_U, DM lb_dt, DM ub_dt) :
-        n_X(n_X), n_U(N_U), t_0(T_0), n_stp(n_stp), f(f), F(F), x_0(X_0), x_f(X_f),
-        lb_U(lb_U), ub_U(ub_U), lb_dt(lb_dt), ub_dt(ub_dt) {
+
+    Optimizer(Dynamics dyn, Constraints cons) :
+        n_X(dyn.n_X), n_U(dyn.n_U), T_guess(T_0), n_steps(n_stp), f(dyn.f), F(dyn.F), X_0(cons.X_0), X_f(cons.X_f),
+        lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt) {
         // Constructor implementation
 
         }

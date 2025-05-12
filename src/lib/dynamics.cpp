@@ -10,6 +10,9 @@ Dynamics::Dynamics() {
     U = MX::sym("tau", 3);
     dt = MX::sym("dt");
 
+    n_X = X.size1();
+    n_U = U.size1();
+
     MX q = X(Slice(0,4));
     MX w = X(Slice(4));
 
@@ -41,18 +44,4 @@ MX Dynamics::rk4(const Function& f, const MX& x, const MX& u, const MX& dt) {
     auto k3{f(MXVector{x + dt / 2 * k2, u})[0]};
     auto k4{f(MXVector{x + dt * k3, u})[0]};
     return x + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4);
-}
-
-// Converts Euler angles to a quaternion
-DM euler2quat(const double& phi, const double& theta, const double& psi) {
-    double q0{cos(phi/2) * cos(theta/2) * cos(psi/2) + sin(phi/2) * sin(theta/2) * sin(psi/2)};
-    double q1{sin(phi/2) * cos(theta/2) * cos(psi/2) - cos(phi/2) * sin(theta/2) * sin(psi/2)};
-    double q2{cos(phi/2) * sin(theta/2) * cos(psi/2) + sin(phi/2) * cos(theta/2) * sin(psi/2)};
-    double q3{cos(phi/2) * cos(theta/2) * sin(psi/2) - sin(phi/2) * sin(theta/2) * cos(psi/2)};
-
-    // Normalize the quaternion to eliminate numerical errors
-    DM q{DM::vertcat({q0, q1, q2, q3})}; 
-    q = q / norm_2(q); 
-
-    return q;
 }

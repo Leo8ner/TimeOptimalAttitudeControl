@@ -48,7 +48,7 @@ endif()
 # find the following packages
 find_package(Threads REQUIRED)
 
-add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp)
+add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp)
 target_include_directories(
     toac PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac
 )
