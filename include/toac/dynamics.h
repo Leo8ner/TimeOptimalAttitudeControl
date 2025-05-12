@@ -7,6 +7,7 @@
 using namespace casadi;
 
 struct Dynamics {
+
     MX X, U, dt;
     MX I;
     Function f, F;
