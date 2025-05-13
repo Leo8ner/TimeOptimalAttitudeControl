@@ -1,63 +1,50 @@
-#include <casadi/casadi.hpp>
-#include <toac/symmetric_spacecraft.h>
-#include <toac/dynamics.h>
-#include <toac/constraints.h>
+#include <toac/optimizer.h>
 
 using namespace casadi;
 
-class Optimizer {
+Optimizer::Optimizer(const Dynamics& dyn, const Constraints& cons) :
+    n_X(dyn.n_X), n_U(dyn.n_U), f(dyn.f), F(dyn.F), X_0(cons.X_0), X_f(cons.X_f),
+    lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt) {
 
-    int n_X, n_U;
-    Function f, F;
-    DM X_0, X_f;
-    DM lb_U, ub_U, lb_dt, ub_dt;
-    Opti opti {Opti()};                   // Optimization problem
-    Slice all;                            // Equivalent to the slice operation in Python
+    // Decision variables
+    X = opti.variable(n_X, n_stp + 1); // State trajectory    
+    U = opti.variable(n_U, n_stp);     // Control trajectory (torque)
+    T = opti.variable();               // Time horizon
+    dt = T / n_stp; // time step
+    
+    //// Consraints ////
 
-public:
+    // Box constraints
+    opti.subject_to(opti.bounded(lb_dt, dt, ub_dt)); // Time step constraints
+    opti.subject_to(opti.bounded(lb_U, U, ub_U));    // Control constraints
 
-    Optimizer(const Dynamics& dyn, const Constraints& cons) :
-        n_X(dyn.n_X), n_U(dyn.n_U), f(dyn.f), F(dyn.F), X_0(cons.X_0), X_f(cons.X_f),
-        lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt) {
+    // Dyamics constraints
+    for (int k = 0; k < n_stp; ++k) {
+        opti.subject_to(X(all,k+1) == F({X(all,k), U(all,k), dt})[0]); // Enforce the discretized dynamics
+    };
 
-        // Decision variables
-        MX X {opti.variable(n_X, n_stp + 1)}; // State trajectory    
-        MX U {opti.variable(n_U, n_stp)};     // Control trajectory (torque)
-        MX T {opti.variable()};               // Time horizon
-        MX dt = T / n_stp; // time step
-        
-        //// Consraints
+    // Initial and final state constraints
+    opti.subject_to(X(all,0) == X_0);     // Initial condition
+    opti.subject_to(X(all,n_stp) == X_f); // Final condition
 
-        // Box constraints
-        opti.subject_to(opti.bounded(lb_dt, dt, ub_dt)); // Time step constraints
-        opti.subject_to(opti.bounded(lb_U, U, ub_U));     // Control constraints
+    //// Initial guess ////
+    opti.set_initial(T, T_0); // Initial guess for the time horizon
 
-        // Dyamics constraints
-        for (int k = 0; k < n_stp; ++k) {
-            opti.subject_to(X(all,k+1) == F({X(all,k), U(all,k), dt})[0]); // Enforce the discretized dynamics
-        };
-
-        // Initial and final state constraints
-        opti.subject_to(X(all,0) == X_0);     // Initial condition
-        opti.subject_to(X(all,n_stp) == X_f); // Final condition
-
-        //// Initial guess
-        opti.set_initial(T, T_0); // Initial guess for the state trajectory
-
-        opti.solver("ipopt");         // set numerical backend
-        OptiSol sol = opti.solve();   // actual solve
-
-        }
-
-
-
-
-
-
-    // -------- objective ------------
+    //// Objective ////
     opti.minimize(T);
 
-    // ---- dynamic constraints --------
-    MX dt = T / n_stp; // time step
-
+    ///// Solver ////
+    opti.solver("ipopt"); // Set numerical backend
 };
+
+std::tuple<DM, DM, DM> Optimizer::solve() {
+    auto sol = opti.solve();
+    DM X_sol = sol.value(X);
+    DM U_sol = sol.value(U);
+    DM T_sol = sol.value(T);
+    DM dt_sol = T_sol / n_stp;
+    std::cout << "dt: " << dt_sol << " s" << std::endl;
+    std::cout << "T: " << T_sol << " s" << std::endl;
+    return std::make_tuple(X_sol, U_sol, T_sol);
+};
+

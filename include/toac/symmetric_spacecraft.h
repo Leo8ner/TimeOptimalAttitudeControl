@@ -25,8 +25,8 @@ const double wz_f{0.0};             // Final yaw rate------------------, rad/s
 // Time parameters
 const double T_0{3.0};              // Time horizon initial guess------, s
 const int n_stp{100};               // Number of time steps------------, -
-const double lb_dt{0.0001};         // Minimum time step---------------, s
-const double ub_dt{0.1};            // Maximum time step---------------, s
+const double dt_min{0.0001};        // Minimum time step---------------, s
+const double dt_max{0.1};           // Maximum time step---------------, s
 
 // Inertia parameters
 const double i_x{1.0};              // Moment of inertia around x-axis, kg*m^2

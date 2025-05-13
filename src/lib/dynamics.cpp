@@ -1,5 +1,3 @@
-#include <casadi/casadi.hpp>
-#include <toac/symmetric_spacecraft.h>
 #include <toac/dynamics.h>
 
 using namespace casadi;
@@ -13,8 +11,8 @@ Dynamics::Dynamics() {
     n_X = X.size1();
     n_U = U.size1();
 
-    MX q = X(Slice(0,4));
-    MX w = X(Slice(4));
+    MX q = X(Slice(0, 4));
+    MX w = X(Slice(4, 7));
 
     MX S = skew4(w);
     MX q_dot = 0.5 * MX::mtimes(S, q);
