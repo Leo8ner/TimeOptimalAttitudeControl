@@ -37,7 +37,7 @@ Optimizer::Optimizer(const Dynamics& dyn, const Constraints& cons) :
     opti.solver("ipopt"); // Set numerical backend
 };
 
-std::tuple<DM, DM, DM> Optimizer::solve() {
+std::tuple<DM, DM, DM, DM> Optimizer::solve() {
     auto sol = opti.solve();
     DM X_sol = sol.value(X);
     DM U_sol = sol.value(U);
@@ -45,6 +45,6 @@ std::tuple<DM, DM, DM> Optimizer::solve() {
     DM dt_sol = T_sol / n_stp;
     std::cout << "dt: " << dt_sol << " s" << std::endl;
     std::cout << "T: " << T_sol << " s" << std::endl;
-    return std::make_tuple(X_sol, U_sol, T_sol);
+    return std::make_tuple(X_sol, U_sol, T_sol, dt_sol);
 };
 

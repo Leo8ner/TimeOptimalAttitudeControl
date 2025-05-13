@@ -4,7 +4,7 @@
 #include <toac/constraints.h>
 #include <iostream>
 #include <chrono>
-#include <fstream>
+#include <toac/plots.h>
 
 using namespace casadi;
 
@@ -22,7 +22,7 @@ int main() {
 
     // Solver
     Optimizer opti(dyn, cons);     // Create an instance of the Optimizer class
-    auto [X, U, T] = opti.solve(); // Solve the optimization problem
+    auto [X, U, T, dt] = opti.solve(); // Solve the optimization problem
 
     // Stop the timer
     auto end = std::chrono::high_resolution_clock::now();
@@ -30,5 +30,10 @@ int main() {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
     // Print the elapsed time
     std::cout << "Computation time: " << elapsed.count() << " s" << std::endl;
+
+    // Export the trajectory to a CSV file
+    exportTrajectory(X, U, T, dt, "trajectory.csv"); 
+
+    
     return 0;
 }

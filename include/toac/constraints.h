@@ -12,9 +12,10 @@ struct Constraints {
     DM lb_dt, ub_dt;
 
     Constraints();
-
-    // Converts Euler angles to a quaternion
-    DM euler2quat(const double& phi, const double& theta, const double& psi);
 };
+
+// Converts Euler angles to a quaternion
+DM euler2quat(const double& phi, const double& theta, const double& psi);
+
 
 #endif // CONSTRAINTS_H

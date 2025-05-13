@@ -23,7 +23,7 @@ public:
 
     Optimizer(const Dynamics& dyn, const Constraints& cons);
 
-    std::tuple<DM, DM, DM> solve();
+    std::tuple<DM, DM, DM, DM> solve();
 
 };
 
