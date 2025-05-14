@@ -9,7 +9,7 @@ void exportTrajectory(const DM& X, const DM& U, const DM& T, const DM& dt, const
     for (int i = 0; i < X.columns(); ++i) {
         X_expanded(Slice(0, 3), i) = quat2euler(X(Slice(0, 4), i));;
     }
-    std::ofstream file(filename);
+    std::ofstream file("../output/" + filename);
 
     if (!file.is_open()) {
         std::cerr << "Failed to open " << filename << " for writing.\n";

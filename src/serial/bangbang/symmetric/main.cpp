@@ -5,6 +5,7 @@
 #include <iostream>
 #include <chrono>
 #include <toac/plots.h>
+#include <cstdlib>
 
 using namespace casadi;
 
@@ -34,6 +35,8 @@ int main() {
     // Export the trajectory to a CSV file
     exportTrajectory(X, U, T, dt, "trajectory.csv"); 
 
+    // Plot the trajectory
+    std::system("python3 ../src/lib/plot_csv_data.py trajectory.csv"); // Call the Python script to plot the data
     
     return 0;
 }
