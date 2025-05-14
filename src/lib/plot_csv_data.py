@@ -91,7 +91,7 @@ def main(csv_path: str | Path) -> None:
     U_rows: list[list[float]] = data["U"]  # type: ignore[index]
     T: float = data["T"]  # type: ignore[assignment]
     dt: float = data["dt"]  # type: ignore[assignment]
-    n_steps = int(T / dt) + 1  # number of time steps
+    n_steps = len(X_rows[0])  # number of time steps
     time = np.linspace(0, T + dt, n_steps)  # time vector
 
     # Convert to arrays for convenience
@@ -105,7 +105,7 @@ def main(csv_path: str | Path) -> None:
     plt.plot(time, X[2]*180/np.pi, label=r"$\psi$")
     plt.xlabel("Time  [s]")
     plt.ylabel("Euler Angles [deg]")
-    plt.title("Euler angles with time")
+    plt.title("Attitude with time")
     plt.grid(True)
     plt.legend()
 

@@ -23,7 +23,7 @@ const double wy_f{0.0};             // Final pitch rate----------------, rad/s
 const double wz_f{0.0};             // Final yaw rate------------------, rad/s
 
 // Time parameters
-const double T_0{2.0};              // Time horizon initial guess------, s
+const double T_0{2.4011};              // Time horizon initial guess------, s
 const int n_stp{100};               // Number of time steps------------, -
 const double dt_min{0.0001};        // Minimum time step---------------, s
 const double dt_max{0.1};           // Maximum time step---------------, s
@@ -35,5 +35,6 @@ const double i_z{1.0};              // Moment of inertia around z-axis, kg*m^2
 
 // Actuator limits
 const double tau_max{1.0};          // Maximum torque-----------------, Nm
+const double tau_dot_max{1.0};      // Maximum torque rate of change--, Nm/s
 
 #endif // SYMMETRICSPACERAFT_H

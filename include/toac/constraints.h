@@ -10,8 +10,10 @@ struct Constraints {
     DM X_0, X_f;
     DM lb_U, ub_U;
     DM lb_dt, ub_dt;
+    bool Udot {false};                    // Control input constraints
 
     Constraints();
+    void setUdot();                      // Set the constraints for the control input
 };
 
 // Converts Euler angles to a quaternion

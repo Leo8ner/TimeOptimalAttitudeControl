@@ -14,6 +14,11 @@ Constraints::Constraints() : lb_dt{dt_min}, ub_dt{dt_max} {
     ub_U = DM::vertcat({ tau_max,  tau_max,  tau_max});             // Upper bound for torque
 }
 
+void Constraints::setUdot() {
+    // Set the constraints for the control input
+    Udot = true;
+}
+
 // Converts Euler angles to a quaternion
 DM euler2quat(const double& phi, const double& theta, const double& psi) {
     double q0{cos(phi/2) * cos(theta/2) * cos(psi/2) + sin(phi/2) * sin(theta/2) * sin(psi/2)};

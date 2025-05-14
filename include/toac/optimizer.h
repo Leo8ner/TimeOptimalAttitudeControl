@@ -18,6 +18,7 @@ class Optimizer {
     Opti opti {Opti()};                   // Optimization problem
     Slice all;
     MX X, U, T, dt;
+    MX delta_U_max, delta_U;
 
 public:
 

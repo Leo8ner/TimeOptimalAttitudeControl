@@ -15,13 +15,23 @@ Optimizer::Optimizer(const Dynamics& dyn, const Constraints& cons) :
     //// Consraints ////
 
     // Box constraints
-    opti.subject_to(opti.bounded(lb_dt, dt, ub_dt)); // Time step constraints
-    opti.subject_to(opti.bounded(lb_U, U, ub_U));    // Control constraints
+    opti.subject_to(opti.bounded(lb_dt, dt, ub_dt));    // Time step constraints
+    opti.subject_to(opti.bounded(lb_U, U, ub_U));       // Control constraints
+    opti.subject_to(X(0, all) >= MX::zeros(1, n_stp + 1)); // Ensure q0 >= 0 to pick a hemisphere
 
-    // Dyamics constraints
+    // Control input constraints
+    if (cons.Udot) {
+        delta_U = U(Slice(), Slice(1, n_stp)) - U(Slice(), Slice(0, n_stp - 1)); 
+        delta_U = reshape(delta_U, 3*(n_stp-1), 1); // Flatten to vector
+        delta_U_max = dt * tau_dot_max * MX::ones(3*(n_stp-1), 1); // Also a vector
+        opti.subject_to(opti.bounded(-delta_U_max, delta_U, delta_U_max)); // Control input rate of change
+    }
+
+    // Dynamics constraints
     for (int k = 0; k < n_stp; ++k) {
         opti.subject_to(X(all,k+1) == F({X(all,k), U(all,k), dt})[0]); // Enforce the discretized dynamics
     };
+
 
     // Initial and final state constraints
     opti.subject_to(X(all,0) == X_0);     // Initial condition

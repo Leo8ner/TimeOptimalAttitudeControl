@@ -75,5 +75,8 @@ add_executable(SerialBangbangSymmetric src/serial/bangbang/symmetric/main.cpp)
 target_link_libraries(SerialBangbangSymmetric PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(SerialBangbangSymmetric PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-#add_executable(SerialBangbangAsymmetric src/serial/bangbang/asymmetric/main.cpp)
-#target_link_libraries(SerialBangbangAsymmetric PRIVATE toac)
+add_executable(SerialSmoothSymmetric src/serial/smooth/symmetric/main.cpp)
+
+# Link the executable to the CasADi library
+target_link_libraries(SerialSmoothSymmetric PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(SerialSmoothSymmetric PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
