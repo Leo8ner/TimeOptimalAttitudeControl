@@ -68,6 +68,10 @@ file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
 
+add_executable(GenerateCode src/c_code_gen.cpp)
+# Link the executable to the CasADi library
+target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(GenerateCode PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 add_executable(SerialBangbangSymmetric src/serial/bangbang/symmetric/main.cpp)
 
@@ -80,3 +84,11 @@ add_executable(SerialSmoothSymmetric src/serial/smooth/symmetric/main.cpp)
 # Link the executable to the CasADi library
 target_link_libraries(SerialSmoothSymmetric PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(SerialSmoothSymmetric PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+
+# Runs GenerateCode automatically after build
+add_custom_target(run_codegen ALL
+    COMMAND GenerateCode
+    DEPENDS GenerateCode
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running GenerateCode automatically after build"
+)

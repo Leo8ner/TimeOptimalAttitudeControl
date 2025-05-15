@@ -16,7 +16,7 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
 
     // Dynamics
-    Dynamics dyn; // Create an instance of the Dynamics class
+    Function dyn = getDynamics(); // Import the dynamics from the generated c code
 
     // Constraints
     Constraints cons; // Create an instance of the Constraints class

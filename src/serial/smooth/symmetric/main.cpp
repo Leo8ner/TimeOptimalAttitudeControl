@@ -10,7 +10,7 @@
 using namespace casadi;
 
 int main() {
-
+/*
     // Start the timer
     // This is used to measure the time taken by the optimization process
     auto start = std::chrono::high_resolution_clock::now();
@@ -38,6 +38,6 @@ int main() {
 
     // Plot the trajectory
     std::system("python3 ../src/lib/plot_csv_data.py smooth_trajectory.csv"); // Call the Python script to plot the data
-    
+    */
     return 0;
 }

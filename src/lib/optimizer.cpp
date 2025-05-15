@@ -2,13 +2,13 @@
 
 using namespace casadi;
 
-Optimizer::Optimizer(const Dynamics& dyn, const Constraints& cons) :
-    n_X(dyn.n_X), n_U(dyn.n_U), f(dyn.f), F(dyn.F), X_0(cons.X_0), X_f(cons.X_f),
+Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
+    F(dyn), X_0(cons.X_0), X_f(cons.X_f),
     lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt) {
 
     // Decision variables
-    X = opti.variable(n_X, n_stp + 1); // State trajectory    
-    U = opti.variable(n_U, n_stp);     // Control trajectory (torque)
+    X = opti.variable(7, n_stp + 1); // State trajectory    
+    U = opti.variable(3, n_stp);     // Control trajectory (torque)
     T = opti.variable();               // Time horizon
     dt = T / n_stp; // time step
     

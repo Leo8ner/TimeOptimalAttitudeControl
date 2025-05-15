@@ -11,8 +11,7 @@ using namespace casadi;
 
 class Optimizer {
 
-    int n_X, n_U;
-    Function f, F;
+    Function F; // Dynamics functions
     DM X_0, X_f;
     DM lb_U, ub_U, lb_dt, ub_dt;
     Opti opti {Opti()};                   // Optimization problem
@@ -22,7 +21,7 @@ class Optimizer {
 
 public:
 
-    Optimizer(const Dynamics& dyn, const Constraints& cons);
+    Optimizer(const Function& dyn, const Constraints& cons);
 
     std::tuple<DM, DM, DM, DM> solve();
 
