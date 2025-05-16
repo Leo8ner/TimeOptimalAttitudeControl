@@ -45,6 +45,15 @@ if(CASADI_LIBRARY)
     set(CASADI_LIBRARIES ${CASADI_LIBRARIES} ${CASADI_LIBRARY})
 endif()
 
+# find IPOPT library
+
+if(IPOPT_LIBRARY AND IPOPT_INCLUDE_DIRS)
+    set(IPOPT_LIBRARIES ${IPOPT_LIBRARIES} ${IPOPT_LIBRARY})
+    message(STATUS "Found IPOPT library: ${IPOPT_LIBRARY}")
+else()
+    message(FATAL_ERROR "Ipopt library not found. Please set IPOPT_LIBRARY and IPOPT_INCLUDE_DIRS.")
+endif()
+
 # find the following packages
 find_package(Threads REQUIRED)
 
@@ -68,10 +77,10 @@ file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
 
-add_executable(GenerateCode src/c_code_gen.cpp)
+add_executable(GenerateCode src/c_code_gen_sol.cpp)
 # Link the executable to the CasADi library
-target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} toac)
-target_include_directories(GenerateCode PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} ${IPOPT_LIBRARIES} toac)
+target_include_directories(GenerateCode PRIVATE ${CASADI_INCLUDE_DIRS} ${IPOPT_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 add_executable(SerialBangbangSymmetric src/serial/bangbang/symmetric/main.cpp)
 

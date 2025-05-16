@@ -12,12 +12,14 @@
 
 using namespace casadi;
 
-struct Dynamics {
+class Dynamics {
 
     SX X, U, dt;
     SX I;
-    Function F, jac_F, jac_jac_F;
-    int n_X, n_U;
+
+public:
+    Function F; 
+    //jac_F, jac_jac_F;
 
     Dynamics();
 
@@ -30,6 +32,6 @@ private:
     SX rk4(const SX& x_dot, const SX& x, const SX& dt);
 };
 
-Function getDynamics();
+// Function getDynamics();
 
 #endif // DYNAMICS_H

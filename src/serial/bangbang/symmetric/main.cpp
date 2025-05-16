@@ -16,14 +16,28 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
 
     // Dynamics
-    Function dyn = getDynamics(); // Import the dynamics from the generated c code
+    //Function dyn = getDynamics(); // Import the dynamics from the generated c code
+
+    // Constraints
+    //Constraints cons; // Create an instance of the Constraints class
+
+    // Solver
+    //Optimizer opti(dyn, cons);     // Create an instance of the Optimizer class
+    //auto [X, U, T, dt] = opti.solve(); // Solve the optimization problem
+
+    Function solver = get_solver(); // Get the solver function
 
     // Constraints
     Constraints cons; // Create an instance of the Constraints class
 
-    // Solver
-    Optimizer opti(dyn, cons);     // Create an instance of the Optimizer class
-    auto [X, U, T, dt] = opti.solve(); // Solve the optimization problem
+    // Call the solver
+    DMDict inputs = {{"X0", cons.X_0}, {"Xf", cons.X_f}};
+    DMDict result = solver(inputs);
+
+    DM X = result["X"];
+    DM U = result["U"];
+    DM T = result["T"];
+    DM dt = T / n_stp; // Calculate the time step
 
     // Stop the timer
     auto end = std::chrono::high_resolution_clock::now();

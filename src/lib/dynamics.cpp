@@ -8,9 +8,6 @@ Dynamics::Dynamics() {
     U = SX::sym("tau", 3);
     dt = SX::sym("dt");
 
-    n_X = X.size1();
-    n_U = U.size1();
-
     SX q = X(Slice(0, 4));
     SX w = X(Slice(4, 7));
 
@@ -23,8 +20,8 @@ Dynamics::Dynamics() {
     SX X_dot = SX::vertcat({q_dot, w_dot});
     SX X_next = rk4(X_dot, X, dt);
     F = Function("F", {X, U, dt}, {X_next});
-    jac_F  = F.jacobian();
-    jac_jac_F = jac_F.jacobian();
+//    jac_F  = F.jacobian();
+//    jac_jac_F = jac_F.jacobian();
 
 }
 
@@ -47,11 +44,11 @@ SX Dynamics::rk4(const SX& x_dot, const SX& x, const SX& dt) {
     return x + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4);
 }
 
-Function getDynamics() {
-        // library prefix and full name
-        std::string prefix_lib = std::filesystem::current_path().parent_path().string() + "/build/";
-        std::string lib_full_name = prefix_lib + "lib_dynamics.so";
+// Function getDynamics() {
+//         // library prefix and full name
+//         std::string prefix_lib = std::filesystem::current_path().parent_path().string() + "/build/";
+//         std::string lib_full_name = prefix_lib + "lib_dynamics.so";
 
-        // use this function
-        return external("F", lib_full_name);
-}
+//         // use this function
+//         return external("F", lib_full_name);
+// }
