@@ -16,7 +16,7 @@ class Optimizer {
     DM lb_U, ub_U, lb_dt, ub_dt;
     Opti opti {Opti()};                   // Optimization problem
     Slice all;
-    MX X, U, T, dt;
+    MX X, U, dt;
     MX p_X0, p_Xf;                      // Parameters
     MX delta_U_max, delta_U;
     int n_X{7};                     // Number of states

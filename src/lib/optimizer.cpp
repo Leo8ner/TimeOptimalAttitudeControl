@@ -9,8 +9,7 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
     // Decision variables
     X = opti.variable(n_X, n_stp + 1); // State trajectory    
     U = opti.variable(n_U, n_stp);     // Control trajectory (torque)
-    T = opti.variable();               // Time horizon
-    dt = T / n_stp; // time step
+    dt = opti.variable();               // Time horizon
     
     // Parameters
     p_X0 = opti.parameter(n_X);           // Parameter for initial state
@@ -32,8 +31,14 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
     }
 
     // Dynamics constraints
+    MX X_kp1; // Next state
     for (int k = 0; k < n_stp; ++k) {
-        opti.subject_to(X(all,k+1) == F({X(all,k), U(all,k), dt})[0]); // Enforce the discretized dynamics
+        // Integrate dynamics
+        //F_out = F(MXDict{{"x0", X(all,k)}, {"u", U(all,k)}, {"p", dt}});
+        //X_kp1 = F_out.at("xf");
+        X_kp1 = F({X(all,k), U(all,k), dt})[0]; // Call the dynamics function
+        opti.subject_to(X(all,k+1) == X_kp1); // Enforce the discretized dynamics
+
     };
 
 
@@ -42,19 +47,19 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
     opti.subject_to(X(all,n_stp) == p_Xf); // Final condition
 
     //// Initial guess ////
-    opti.set_initial(T, T_0); // Initial guess for the time horizon
+    opti.set_initial(dt, dt_0); // Initial guess for the time horizon
 
     //// Objective ////
-    opti.minimize(T);
+    opti.minimize(dt);
 
     ///// Solver ////
     opti.solver("ipopt"); // Set numerical backend
 
     solver = opti.to_function("solver",
         {p_X0, p_Xf},                      // Inputs
-        {X, U, T},                         // Outputs
+        {X, U, dt},                         // Outputs
         {"X0", "Xf"},                      // Input names
-        {"X", "U", "T"}                    // Output names
+        {"X", "U", "dt"}                    // Output names
     );
 }
 

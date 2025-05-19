@@ -20,8 +20,11 @@ Dynamics::Dynamics() {
     SX X_dot = SX::vertcat({q_dot, w_dot});
     SX X_next = rk4(X_dot, X, dt);
     F = Function("F", {X, U, dt}, {X_next});
-//    jac_F  = F.jacobian();
-//    jac_jac_F = jac_F.jacobian();
+
+    // Create integrator options
+    //SXDict f = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}, {"quad", dt}};
+    //F = integrator("F", "rk", f);
+
 
 }
 

@@ -23,8 +23,9 @@ const double wy_f{0.0};             // Final pitch rate----------------, rad/s
 const double wz_f{0.0};             // Final yaw rate------------------, rad/s
 
 // Time parameters
-const double T_0{2.4011};              // Time horizon initial guess------, s
+const double T_0{2.4011};           // Time horizon initial guess------, s
 const int n_stp{100};               // Number of time steps------------, -
+const double dt_0{T_0/n_stp};       // Time step initial guess----------, s
 const double dt_min{0.0001};        // Minimum time step---------------, s
 const double dt_max{0.1};           // Maximum time step---------------, s
 

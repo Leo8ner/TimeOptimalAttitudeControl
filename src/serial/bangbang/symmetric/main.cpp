@@ -26,8 +26,8 @@ int main() {
 
     DM X = result["X"];
     DM U = result["U"];
-    DM T = result["T"];
-    DM dt = T / n_stp; // Calculate the time step
+    DM dt = result["dt"];
+    DM T = dt * n_stp; // Calculate the time step
 
     // Stop the timer
     auto end = std::chrono::high_resolution_clock::now();
