@@ -39,8 +39,8 @@ int main(){
     std::string prefix_lib = fs::current_path().parent_path().string() + "/build/";
     std::string compile_command = "gcc -fPIC -shared -O3 " + 
         prefix_code + "solver.c -o " +
-        prefix_lib + "lib_solver.so";
-
+        prefix_lib + "lib_solver.so " +
+        "-lipopt";
     std::cout << compile_command << std::endl;
 
     int compile_flag = std::system(compile_command.c_str());

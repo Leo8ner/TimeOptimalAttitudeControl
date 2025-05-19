@@ -15,16 +15,6 @@ int main() {
     // This is used to measure the time taken by the optimization process
     auto start = std::chrono::high_resolution_clock::now();
 
-    // Dynamics
-    //Function dyn = getDynamics(); // Import the dynamics from the generated c code
-
-    // Constraints
-    //Constraints cons; // Create an instance of the Constraints class
-
-    // Solver
-    //Optimizer opti(dyn, cons);     // Create an instance of the Optimizer class
-    //auto [X, U, T, dt] = opti.solve(); // Solve the optimization problem
-
     Function solver = get_solver(); // Get the solver function
 
     // Constraints
@@ -44,7 +34,10 @@ int main() {
     // Calculate the elapsed time
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
     // Print the elapsed time
-    std::cout << "Computation time: " << elapsed.count() << " s" << std::endl;
+    std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
+    std::cout << "Maneuver Duration: " << T << " s" << std::endl;
+    std::cout << "Time Step: " << dt << " s" << std::endl;
+
 
     // Export the trajectory to a CSV file
     exportTrajectory(X, U, T, dt, "trajectory.csv"); 
