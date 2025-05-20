@@ -12,7 +12,6 @@ using namespace casadi;
 class Optimizer {
 
     Function F; // Dynamics functions
-    DM X_0, X_f;
     DM lb_U, ub_U, lb_dt, ub_dt;
     Opti opti {Opti()};                   // Optimization problem
     Slice all;
@@ -27,6 +26,28 @@ public:
     Function solver; // Solver function
 
     Optimizer(const Function& dyn, const Constraints& cons);
+
+    //std::tuple<DM, DM, DM, DM> solve();
+
+};
+
+class OptiCvodes {
+
+    Function F; // Dynamics functions
+    DM lb_U, ub_U, lb_dt, ub_dt;
+    Opti opti {Opti()};                   // Optimization problem
+    Slice all;
+    MX X, U, dt;
+    MX p_X0, p_Xf;                      // Parameters
+    MX delta_U_max, delta_U;
+    int n_X{7};                     // Number of states
+    int n_U{3};                     // Number of controls
+
+public:
+
+    Function solver; // Solver function
+
+    OptiCvodes(const Function& dyn, const Constraints& cons);
 
     //std::tuple<DM, DM, DM, DM> solve();
 

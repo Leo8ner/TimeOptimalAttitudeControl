@@ -19,18 +19,26 @@ class Dynamics {
 
 public:
     Function F; 
-    //jac_F, jac_jac_F;
 
     Dynamics();
-
-private:
-
-    // Takes a 3D vector w and returns a 4x4 skew-symmetric matrix
-    SX skew4(const SX& w);
-
-    // RK4 integrator
-    SX rk4(const SX& x_dot, const SX& x, const SX& dt);
 };
+
+class DynCvodes {
+
+    SX X, U, dt;
+    SX I;
+
+public:
+    Function F; 
+
+    DynCvodes();
+};
+
+// Takes a 3D vector w and returns a 4x4 skew-symmetric matrix
+SX skew4(const SX& w);
+
+// RK4 integrator
+SX rk4(const SX& x_dot, const SX& x, const SX& dt);
 
 // Function getDynamics();
 

@@ -29,7 +29,7 @@ Dynamics::Dynamics() {
 }
 
 // Skew-symmetric matrix
-SX Dynamics::skew4(const SX& w) {
+SX skew4(const SX& w) {
     SX S = SX::zeros(4, 4);
     S(0,1) = -w(0); S(0,2) = -w(1); S(0,3) = -w(2);
     S(1,0) =  w(0); S(1,2) =  w(2); S(1,3) = -w(1);
@@ -39,7 +39,7 @@ SX Dynamics::skew4(const SX& w) {
 }
 
 // RK4 integrator
-SX Dynamics::rk4(const SX& x_dot, const SX& x, const SX& dt) {
+SX rk4(const SX& x_dot, const SX& x, const SX& dt) {
     SX k1{x_dot};
     SX k2{substitute(x_dot, x, x + dt / 2 * k1)};
     SX k3{substitute(x_dot, x, x + dt / 2 * k2)};
@@ -55,3 +55,25 @@ SX Dynamics::rk4(const SX& x_dot, const SX& x, const SX& dt) {
 //         // use this function
 //         return external("F", lib_full_name);
 // }
+
+DynCvodes::DynCvodes() {
+    X = SX::vertcat({SX::sym("q", 4), SX::sym("w", 3)});
+    U = SX::sym("tau", 3);
+    dt = SX::sym("dt");
+
+    SX q = X(Slice(0, 4));
+    SX w = X(Slice(4, 7));
+
+    SX S = skew4(w);
+    SX q_dot = 0.5 * SX::mtimes(S, q);
+
+    SX I = SX::diag(SX::vertcat({i_x, i_y, i_z}));
+    SX w_dot = SX::mtimes(inv(I), (U - cross(w, SX::mtimes(I, w))));
+
+    SX X_dot = SX::vertcat({q_dot, w_dot});
+
+    // Create integrator options
+    SXDict f = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}, {"quad", dt}};
+    F = integrator("F", "cvodes", f,);
+
+}

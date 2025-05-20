@@ -88,11 +88,11 @@ add_executable(SerialBangbangSymmetric src/serial/bangbang/symmetric/main.cpp)
 target_link_libraries(SerialBangbangSymmetric PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(SerialBangbangSymmetric PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-add_executable(SerialSmoothSymmetric src/serial/smooth/symmetric/main.cpp)
+add_executable(SerialBangbangSymmetricCvodes src/serial/bangbang/symmetric/main_cvodes.cpp)
 
 # Link the executable to the CasADi library
-target_link_libraries(SerialSmoothSymmetric PRIVATE ${CASADI_LIBRARIES} toac)
-target_include_directories(SerialSmoothSymmetric PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+target_link_libraries(SerialBangbangSymmetricCvodes PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(SerialBangbangSymmetricCvodes PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 # Runs GenerateCode automatically after build
 add_custom_target(run_codegen ALL

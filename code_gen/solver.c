@@ -57071,8 +57071,8 @@ static int casadi_f0(const casadi_real** arg, casadi_real** res, casadi_int* iw,
   casadi_clear(w000, 707);
   /* #1: @1 = zeros(300x1) */
   casadi_clear(w001, 300);
-  /* #2: @2 = 0.024011 */
-  w002 = 2.4011000000000001e-02;
+  /* #2: @2 = 0.0250665 */
+  w002 = 2.5066500000000002e-02;
   /* #3: @3 = vertcat(@0, @1, @2) */
   rr=w003;
   for (i=0, cs=w000; i<707; ++i) *rr++ = *cs++;

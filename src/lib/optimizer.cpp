@@ -3,8 +3,7 @@
 using namespace casadi;
 
 Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
-    F(dyn), X_0(cons.X_0), X_f(cons.X_f),
-    lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt) {
+    F(dyn), lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt) {
 
     // Decision variables
     X = opti.variable(n_X, n_stp + 1); // State trajectory    
@@ -83,4 +82,57 @@ Function get_solver() {
 
         // use this function
         return external("solver", lib_full_name);
+}
+
+OptiCvodes::OptiCvodes(const Function& dyn, const Constraints& cons) :
+    F(dyn), lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt) {
+
+    // Decision variables
+    X = opti.variable(n_X, n_stp + 1); // State trajectory    
+    U = opti.variable(n_U, n_stp);     // Control trajectory (torque)
+    dt = opti.variable();               // Time horizon
+    
+    // Parameters
+    p_X0 = opti.parameter(n_X);           // Parameter for initial state
+    p_Xf = opti.parameter(n_X);           // Parameter for final state
+    
+    //// Consraints ////
+
+    // Box constraints
+    opti.subject_to(opti.bounded(lb_dt, dt, ub_dt));    // Time step constraints
+    opti.subject_to(opti.bounded(lb_U, U, ub_U));       // Control constraints
+    opti.subject_to(X(0, all) >= MX::zeros(1, n_stp + 1)); // Ensure q0 >= 0 to pick a hemisphere
+
+    // Dynamics constraints
+    MX X_kp1; // Next state
+    MX J{0}; // Cost function
+    MXDict F_out;
+    for (int k = 0; k < n_stp; ++k) {
+        // Integrate dynamics
+        F_out = F(MXDict{{"x0", X(all,k)}, {"u", U(all,k)}, {"p", dt}});
+        X_kp1 = F_out.at("xf");
+        J += F_out.at("qf");
+        opti.subject_to(X(all,k+1) == X_kp1); // Enforce the discretized dynamics
+
+    };
+
+    // Initial and final state constraints
+    opti.subject_to(X(all,0) == p_X0);     // Initial condition
+    opti.subject_to(X(all,n_stp) == p_Xf); // Final condition
+
+    //// Initial guess ////
+    opti.set_initial(dt, dt_0); // Initial guess for the time horizon
+
+    //// Objective ////
+    opti.minimize(J);
+
+    ///// Solver ////
+    opti.solver("ipopt"); // Set numerical backend
+
+    solver = opti.to_function("solver",
+        {p_X0, p_Xf},                      // Inputs
+        {X, U, J},                        // Outputs
+        {"X0", "Xf"},                      // Input names
+        {"X", "U", "J"}                   // Output names
+    );
 }
