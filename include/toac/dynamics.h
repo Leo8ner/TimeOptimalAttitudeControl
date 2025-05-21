@@ -15,7 +15,6 @@ using namespace casadi;
 class Dynamics {
 
     SX X, U, dt;
-    SX I;
 
 public:
     Function F; 
@@ -26,7 +25,6 @@ public:
 class DynCvodes {
 
     SX X, U, dt;
-    SX I;
 
 public:
     Function F; 

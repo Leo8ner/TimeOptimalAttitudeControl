@@ -95,7 +95,7 @@ target_link_libraries(SerialBangbangSymmetricCvodes PRIVATE ${CASADI_LIBRARIES} 
 target_include_directories(SerialBangbangSymmetricCvodes PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 # Runs GenerateCode automatically after build
-add_custom_target(run_codegen ALL
+add_custom_target(run_codegen
     COMMAND GenerateCode
     DEPENDS GenerateCode
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
