@@ -103,13 +103,9 @@ OptiCvodes::OptiCvodes(const Function& dyn, const Constraints& cons) :
 
     // Dynamics constraints
     MX X_kp1; // Next state
-    MX T{0}; // Cost function
-    MXDict F_out;
     for (int k = 0; k < n_stp; ++k) {
         // Integrate dynamics
-        F_out = F(MXDict{{"x0", X(all,k)}, {"u", U(all,k)}, {"p", dt(k)}});
-        X_kp1 = F_out.at("xf");
-        T += dt(k);
+        X_kp1 = F(MXDict{{"x0", X(all,k)}, {"u", U(all,k)}, {"p", dt(k)}}).at("xf");
         opti.subject_to(X(all,k+1) == X_kp1); // Enforce the discretized dynamics
         opti.subject_to(dot(X(Slice(0,4),k+1),X(Slice(0,4),k+1)) == 1); // Ensure |q| = 1 
 
@@ -121,15 +117,18 @@ OptiCvodes::OptiCvodes(const Function& dyn, const Constraints& cons) :
 
     //// Initial guess ////
     opti.set_initial(dt, dt_0*DM::ones(n_stp)); // Initial guess for the time horizon
-    std::cout << "dt_0: " << dt_0 << std::endl;
     opti.set_initial(X, stateInterpolator(X_0, X_f, n_stp+1)); // Initial guess for the initial state
     opti.set_initial(U, inputInterpolator(X_0(Slice(1,4)), X_f(Slice(1,4)), n_stp)); // Initial guess for the control input
 
     //// Objective ////
+    MX T = sum(dt); // Objective function
     opti.minimize(T);
 
     ///// Solver ////
-    opti.solver("ipopt"); // Set numerical backend
+    Dict plugin_opts{}, solver_opts{};
+    //plugin_opts["expand"] = true;
+    //solver_opts["mu_strategy"] = "adaptive";
+    opti.solver("ipopt", plugin_opts, solver_opts); // Set numerical backend
 
     solver = opti.to_function("solver",
         {p_X0, p_Xf},                      // Inputs

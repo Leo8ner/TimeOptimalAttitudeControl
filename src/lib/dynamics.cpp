@@ -53,9 +53,9 @@ SX rk4(const SX& x_dot, const SX& x, const SX& dt) {
 // }
 
 DynCvodes::DynCvodes() {
-    X = SX::vertcat({SX::sym("q", 4), SX::sym("w", 3)});
-    U = SX::sym("tau", 3);
-    dt = SX::sym("dt");
+    SX X = SX::vertcat({SX::sym("q", 4), SX::sym("w", 3)});
+    SX U = SX::sym("tau", 3);
+    SX dt = SX::sym("dt");
 
     SX q = X(Slice(0, 4));
     SX w = X(Slice(4, 7));
@@ -70,12 +70,14 @@ DynCvodes::DynCvodes() {
     SX X_dot = SX::vertcat({q_dot, w_dot});
 
     // Create integrator options
-    SXDict f = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
+    SXDict dae = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
     Dict opts;
     opts["collocation_scheme"] = "legendre";
-    opts["interpolation_order"] = 4;
+    opts["interpolation_order"] = 3;
     opts["simplify"] = true;
 
-    F = integrator("F", "collocation", f, opts);
+    //Function f = integrator("f", "collocation", dae, opts);
+    //F = f.mapaccum(n_stp);
+    F = integrator("f", "collocation", dae, opts);
 
 }

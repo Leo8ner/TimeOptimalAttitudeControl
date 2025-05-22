@@ -22,11 +22,8 @@ public:
     Dynamics();
 };
 
-class DynCvodes {
-
-    SX X, U, dt;
-
-public:
+struct DynCvodes {
+    
     Function F; 
 
     DynCvodes();
