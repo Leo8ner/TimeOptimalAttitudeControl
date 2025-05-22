@@ -42,7 +42,17 @@ void exportTrajectory(const DM& X, const DM& U, const DM& T, const DM& dt, const
 
     // Write dt
     file << "\ndt\n";
-    file << dt << "\n";
+    if (dt.size1() == 1)  {
+        file << dt << "\n";
+    } else {
+        for (int j = 0; j < dt.rows(); ++j) {
+            file << dt(j);
+            if (j < dt.rows() - 1) file << ",";
+        }
+        return;
+    }
+
+    file << "\n";
 
     file.close();
     std::cout << "Exported trajectory to " << filename << "\n";

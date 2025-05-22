@@ -133,9 +133,9 @@ OptiCvodes::OptiCvodes(const Function& dyn, const Constraints& cons) :
 
     solver = opti.to_function("solver",
         {p_X0, p_Xf},                      // Inputs
-        {X, U, T},                        // Outputs
+        {X, U, T, dt},                        // Outputs
         {"X0", "Xf"},                      // Input names
-        {"X", "U", "J"}                   // Output names
+        {"X", "U", "T", "dt"}                   // Output names
     );
 }
 

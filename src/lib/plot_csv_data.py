@@ -62,7 +62,7 @@ def load_custom_csv(path: str | Path) -> dict[str, list[list[float]]]:
         i += 1
 
         # scalar headers ------------------------------------------------------
-        if header.lower() in {"t", "dt"}:
+        if header.lower() in {"t"}:
             # next non‑empty line is the value
             while i < n and (not rows[i] or not rows[i][0].strip()):
                 i += 1
@@ -90,9 +90,16 @@ def main(csv_path: str | Path) -> None:
     X_rows: list[list[float]] = data["X"]  # type: ignore[index]
     U_rows: list[list[float]] = data["U"]  # type: ignore[index]
     T: float = data["T"]  # type: ignore[assignment]
-    dt: float = data["dt"]  # type: ignore[assignment]
+    dt_rows: list[list[float]] = data["dt"]  # type: ignore[index]
     n_steps = len(X_rows[0])  # number of time steps
-    time = np.linspace(0, T + dt, n_steps)  # time vector
+    if len(dt_rows) == 1:
+        # Fixed dt case
+        dt = dt_rows[0][0]
+        time = np.linspace(0, T, n_steps)
+    else:
+        # Variable dt case
+        dt = np.array(dt_rows).flatten()
+        time = np.insert(np.cumsum(dt), 0, 0.0)  # insert t=0 at start
 
     # Convert to arrays for convenience
     X = np.vstack(X_rows)   # shape (10, N)
@@ -108,6 +115,7 @@ def main(csv_path: str | Path) -> None:
     plt.title("Attitude with time")
     plt.grid(True)
     plt.legend()
+    plt.savefig("../output/euler_angles.pdf" , format='pdf', dpi=600, bbox_inches='tight')
 
     plt.figure()
     plt.plot(time, X[3], label=r"$q_0$")
@@ -119,6 +127,8 @@ def main(csv_path: str | Path) -> None:
     plt.title("Quaternions with time")
     plt.grid(True)
     plt.legend()
+    plt.savefig("../output/quaternions.pdf" , format='pdf', dpi=600, bbox_inches='tight')
+
 
     plt.figure()
     plt.plot(time, X[7]*180/np.pi, label=r'$\omega_x$')
@@ -129,6 +139,8 @@ def main(csv_path: str | Path) -> None:
     plt.title("Angular rates with time")
     plt.grid(True)
     plt.legend()
+    plt.savefig("../output/angular_rates.pdf" , format='pdf', dpi=600, bbox_inches='tight')
+
 
 
     # Controls ---------------------------------------------------------------
@@ -141,9 +153,11 @@ def main(csv_path: str | Path) -> None:
     plt.title("Control Inputs")
     plt.grid(True)
     plt.legend()
+    plt.savefig("../output/control_inputs.pdf" , format='pdf', dpi=600, bbox_inches='tight')
 
-    plt.tight_layout()
-    plt.show()
+    print("Plotting done. Check the output directory for results.")
+    #plt.tight_layout()
+    #plt.show()
 
 
 if __name__ == "__main__":

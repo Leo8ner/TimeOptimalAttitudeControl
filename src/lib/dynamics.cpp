@@ -70,7 +70,12 @@ DynCvodes::DynCvodes() {
     SX X_dot = SX::vertcat({q_dot, w_dot});
 
     // Create integrator options
-    SXDict f = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}, {"quad", dt}};
-    F = integrator("F", "cvodes", f);
+    SXDict f = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
+    Dict opts;
+    opts["collocation_scheme"] = "legendre";
+    opts["interpolation_order"] = 4;
+    opts["simplify"] = true;
+
+    F = integrator("F", "collocation", f, opts);
 
 }
