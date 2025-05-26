@@ -24,7 +24,7 @@ const double wz_f{0.0};             // Final yaw rate------------------, rad/s
 
 // Time parameters
 const double T_0{2.4};              // Time horizon initial guess------, s
-const int n_stp{25};                // Number of time steps------------, -
+const int n_stp{20};                // Number of time steps------------, -
 const double dt_0{T_0/n_stp};       // Time step initial guess----------, s
 const double dt_min{0.00001};        // Minimum time step---------------, s
 const double dt_max{1};           // Maximum time step---------------, s

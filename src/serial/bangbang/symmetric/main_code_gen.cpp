@@ -15,17 +15,14 @@ int main() {
     // This is used to measure the time taken by the optimization process
     auto start = std::chrono::high_resolution_clock::now();
 
-    // Dynamics
-    DynCvodes dyn; // Create an instance of the dynamics class
+    Function solver = get_solver(); // Get the solver function
 
     // Constraints
     Constraints cons; // Create an instance of the Constraints class
 
-    OptiCvodes opti(dyn.F, cons); // Create an instance of the optimizer class
-
     // Call the solver
     DMDict inputs = {{"X0", cons.X_0}, {"Xf", cons.X_f}};
-    DMDict result = opti.solver(inputs);
+    DMDict result = solver(inputs);
 
     DM X = result["X"];
     DM U = result["U"];
@@ -39,7 +36,6 @@ int main() {
     // Print the elapsed time
     std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
     std::cout << "Maneuver Duration: " << T << " s" << std::endl;
-    //std::cout << "Time Step: " << dt << " s" << std::endl;
 
 
     // Export the trajectory to a CSV file

@@ -15,19 +15,22 @@ int main() {
     // This is used to measure the time taken by the optimization process
     auto start = std::chrono::high_resolution_clock::now();
 
-    Function solver = get_solver(); // Get the solver function
+    // Dynamics
+    ImplicitDynamics dyn; // Create an instance of the dynamics class
 
     // Constraints
     Constraints cons; // Create an instance of the Constraints class
 
+    Optimizer opti(dyn.F, cons); // Create an instance of the optimizer class
+
     // Call the solver
     DMDict inputs = {{"X0", cons.X_0}, {"Xf", cons.X_f}};
-    DMDict result = solver(inputs);
+    DMDict result = opti.solver(inputs);
 
     DM X = result["X"];
     DM U = result["U"];
+    DM T = result["T"];
     DM dt = result["dt"];
-    DM T = dt * n_stp; // Calculate the time step
 
     // Stop the timer
     auto end = std::chrono::high_resolution_clock::now();
@@ -36,7 +39,6 @@ int main() {
     // Print the elapsed time
     std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
     std::cout << "Maneuver Duration: " << T << " s" << std::endl;
-    std::cout << "Time Step: " << dt << " s" << std::endl;
 
 
     // Export the trajectory to a CSV file

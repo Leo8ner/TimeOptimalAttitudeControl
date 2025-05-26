@@ -12,21 +12,21 @@
 
 using namespace casadi;
 
-class Dynamics {
+class ExplicitDynamics {
 
     SX X, U, dt;
 
 public:
     Function F; 
 
-    Dynamics();
+    ExplicitDynamics();
 };
 
-struct DynCvodes {
+struct ImplicitDynamics {
     
     Function F; 
 
-    DynCvodes();
+    ImplicitDynamics();
 };
 
 // Takes a 3D vector w and returns a 4x4 skew-symmetric matrix

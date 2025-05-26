@@ -30,8 +30,7 @@ if(CMAKE_CXX_COMPILER_LOADED)
     message(STATUS "Compiler Version: ${CMAKE_CXX_COMPILER_VERSION}")
 endif()
 
-# set the Ipopt library and include directory
-set(LIBRARY_DIRS /usr/local/lib)
+# set the Ipopt include directory
 set(IPOPT_INCLUDE_DIRS /usr/include/coin)
 
 # set casadi include directory
@@ -46,13 +45,18 @@ if(CASADI_LIBRARY)
 endif()
 
 # find IPOPT library
-
-if(IPOPT_LIBRARY AND IPOPT_INCLUDE_DIRS)
+find_library(IPOPT_LIBRARY
+    NAMES ipopt
+    HINTS /usr/local/lib /usr/lib /opt/lib
+)
+if(IPOPT_LIBRARY)
+    #message(STATUS "Found IPOPT library: ${IPOPT_LIBRARY}")
     set(IPOPT_LIBRARIES ${IPOPT_LIBRARIES} ${IPOPT_LIBRARY})
-    message(STATUS "Found IPOPT library: ${IPOPT_LIBRARY}")
+
 else()
-    message(FATAL_ERROR "Ipopt library not found. Please set IPOPT_LIBRARY and IPOPT_INCLUDE_DIRS.")
+    message(FATAL_ERROR "Ipopt library not found. Please set IPOPT_LIBRARY.")
 endif()
+
 
 # find the following packages
 find_package(Threads REQUIRED)
@@ -69,15 +73,12 @@ include_directories(
     SYSTEM ${CASADI_INCLUDE_DIR}
     ${CODE_GEN_INCLUDE_DIR})
 
-# library directories
-link_directories(${LIBRARY_DIRS})
-
 # find all the header files
 file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
 
-add_executable(GenerateCode src/c_code_gen_sol.cpp)
+add_executable(GenerateCode src/c_code_gen.cpp)
 # Link the executable to the CasADi library
 target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} ${IPOPT_LIBRARIES} toac)
 target_include_directories(GenerateCode PRIVATE ${CASADI_INCLUDE_DIRS} ${IPOPT_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
@@ -88,11 +89,11 @@ add_executable(SerialBangbangSymmetric src/serial/bangbang/symmetric/main.cpp)
 target_link_libraries(SerialBangbangSymmetric PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(SerialBangbangSymmetric PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-add_executable(SerialBangbangSymmetricCvodes src/serial/bangbang/symmetric/main_cvodes.cpp)
+add_executable(SerialBangbangSymmetricCodeGen src/serial/bangbang/symmetric/main_code_gen.cpp)
 
 # Link the executable to the CasADi library
-target_link_libraries(SerialBangbangSymmetricCvodes PRIVATE ${CASADI_LIBRARIES} toac)
-target_include_directories(SerialBangbangSymmetricCvodes PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+target_link_libraries(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 # Runs GenerateCode automatically after build
 add_custom_target(run_codegen

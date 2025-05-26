@@ -3,7 +3,7 @@
 using namespace casadi;
 
 // Constructor implementation
-Dynamics::Dynamics() {
+ExplicitDynamics::ExplicitDynamics() {
     X = SX::vertcat({SX::sym("q", 4), SX::sym("w", 3)});
     U = SX::sym("tau", 3);
     dt = SX::sym("dt");
@@ -43,16 +43,7 @@ SX rk4(const SX& x_dot, const SX& x, const SX& dt) {
     return x + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4);
 }
 
-// Function getDynamics() {
-//         // library prefix and full name
-//         std::string prefix_lib = std::filesystem::current_path().parent_path().string() + "/build/";
-//         std::string lib_full_name = prefix_lib + "lib_dynamics.so";
-
-//         // use this function
-//         return external("F", lib_full_name);
-// }
-
-DynCvodes::DynCvodes() {
+ImplicitDynamics::ImplicitDynamics() {
     SX X = SX::vertcat({SX::sym("q", 4), SX::sym("w", 3)});
     SX U = SX::sym("tau", 3);
     SX dt = SX::sym("dt");
@@ -75,9 +66,7 @@ DynCvodes::DynCvodes() {
     opts["collocation_scheme"] = "legendre";
     opts["interpolation_order"] = 3;
     opts["simplify"] = true;
-
-    //Function f = integrator("f", "collocation", dae, opts);
-    //F = f.mapaccum(n_stp);
+    opts["rootfinder"] = "fast_newton";
     F = integrator("f", "collocation", dae, opts);
 
 }
