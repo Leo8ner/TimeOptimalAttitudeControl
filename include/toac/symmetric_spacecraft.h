@@ -15,7 +15,7 @@ const double wy_0{0.0};             // Initial pitch rate--------------, rad/s
 const double wz_0{0.0};             // Initial yaw rate----------------, rad/s
 
 // Final values
-const double phi_f{90.0 * DEG};     // Final roll angle----------------, rad
+const double phi_f{180.0 * DEG};     // Final roll angle----------------, rad
 const double theta_f{0.0};          // Final pitch angle---------------, rad
 const double psi_f{0.0};            // Final yaw angle-----------------, rad
 const double wx_f{0.0};             // Final roll rate-----------------, rad/s
@@ -24,7 +24,7 @@ const double wz_f{0.0};             // Final yaw rate------------------, rad/s
 
 // Time parameters
 const double T_0{2.4};              // Time horizon initial guess------, s
-const int n_stp{20};                // Number of time steps------------, -
+const int n_stp{50};                // Number of time steps------------, -
 const double dt_0{T_0/n_stp};       // Time step initial guess----------, s
 const double dt_min{0.00001};        // Minimum time step---------------, s
 const double dt_max{1};           // Maximum time step---------------, s

@@ -50,9 +50,7 @@ find_library(IPOPT_LIBRARY
     HINTS /usr/local/lib /usr/lib /opt/lib
 )
 if(IPOPT_LIBRARY)
-    #message(STATUS "Found IPOPT library: ${IPOPT_LIBRARY}")
     set(IPOPT_LIBRARIES ${IPOPT_LIBRARIES} ${IPOPT_LIBRARY})
-
 else()
     message(FATAL_ERROR "Ipopt library not found. Please set IPOPT_LIBRARY.")
 endif()

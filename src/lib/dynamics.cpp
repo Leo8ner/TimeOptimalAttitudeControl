@@ -67,6 +67,6 @@ ImplicitDynamics::ImplicitDynamics() {
     opts["interpolation_order"] = 3;
     opts["simplify"] = true;
     opts["rootfinder"] = "fast_newton";
-    F = integrator("f", "collocation", dae, opts);
-
+    Function f = integrator("f", "collocation", dae, opts);
+    F = f.map(n_stp, "serial");
 }

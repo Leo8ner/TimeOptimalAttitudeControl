@@ -27,19 +27,13 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
     //// Consraints ////
 
     // Box constraints
-    //opti.subject_to(opti.bounded(lb_dt, dt, ub_dt));    // Time step constraints
     opti.subject_to(dt>0);    // Time step constraints
     opti.subject_to(opti.bounded(lb_U, U, ub_U));       // Control constraints
 
     // Dynamics constraints
-    MX X_kp1; // Next state
-    for (int k = 0; k < n_stp; ++k) {
-        // Integrate dynamics
-        X_kp1 = F(MXDict{{"x0", X(all,k)}, {"u", U(all,k)}, {"p", dt(k)}}).at("xf");
-        opti.subject_to(X(all,k+1) == X_kp1); // Enforce the discretized dynamics
-        opti.subject_to(dot(X(Slice(0,4),k+1),X(Slice(0,4),k+1)) == 1); // Ensure |q| = 1 
-
-    };
+    opti.subject_to(sum1(pow(X(Slice(0,4),all), 2)) == 1); // Ensure |q| = 1
+    MX X_kp1 = F(MXDict{{"x0", X(all,Slice(0, n_stp))}, {"u", U}, {"p", dt}}).at("xf");
+    opti.subject_to(X(all,Slice(1, n_stp+1)) == X_kp1); // Enforce the discretized dynamics
 
     // Initial and final state constraints
     opti.subject_to(X(all,0) == p_X0);     // Initial condition
