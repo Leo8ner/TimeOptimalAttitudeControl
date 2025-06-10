@@ -11,6 +11,12 @@ SET(CMAKE_EXE_LINKER_FLAGS
 find_package(casadi REQUIRED)
 # For multi threading
 find_package(Threads REQUIRED)
+# For integration
+find_package(SUNDIALS REQUIRED)
+# For GPU acceleration
+find_package(CUDAToolkit REQUIRED)
+enable_language(CUDA)
+message(STATUS "CUDA version: ${CUDAToolkit_VERSION}")
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
@@ -59,7 +65,8 @@ endif()
 # find the following packages
 find_package(Threads REQUIRED)
 
-add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp)
+add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp src/lib/CUDAdynamics.cu src/lib/CUDAoptimizer.cpp
+    src/lib/CustomCallback.cpp) 
 target_include_directories(
     toac PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac
 )
@@ -69,7 +76,8 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/toac
     SYSTEM ${IPOPT_INCLUDE_DIRS}
     SYSTEM ${CASADI_INCLUDE_DIR}
-    ${CODE_GEN_INCLUDE_DIR})
+    ${CODE_GEN_INCLUDE_DIR}
+    ${CUDAToolkit_INCLUDE_DIRS})
 
 # find all the header files
 file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
@@ -92,6 +100,18 @@ add_executable(SerialBangbangSymmetricCodeGen src/serial/bangbang/symmetric/main
 # Link the executable to the CasADi library
 target_link_libraries(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+
+add_executable(ParallelBangbangSymmetric src/parallel/bangbang/symmetric/main.cpp)
+target_link_libraries(ParallelBangbangSymmetric PRIVATE
+    ${CASADI_LIBRARIES}
+    SUNDIALS::cvode
+    SUNDIALS::nveccuda  
+    CUDA::cudart
+    CUDA::cusparse
+    toac
+)
+
+set_property(TARGET ParallelBangbangSymmetric PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
 # Runs GenerateCode automatically after build
 add_custom_target(run_codegen

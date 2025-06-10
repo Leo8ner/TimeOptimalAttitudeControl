@@ -18,7 +18,7 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
     // Decision variables
     X = opti.variable(n_X, n_stp + 1); // State trajectory    
     U = opti.variable(n_U, n_stp);     // Control trajectory (torque)
-    dt = opti.variable(n_stp);               // Time horizon
+    dt = opti.variable(n_stp);         // Time horizon
 
     // Parameters
     p_X0 = opti.parameter(n_X);           // Parameter for initial state
@@ -54,9 +54,9 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
 
     solver = opti.to_function("solver",
         {p_X0, p_Xf},                      // Inputs
-        {X, U, T, dt},                        // Outputs
+        {X, U, T, dt},                     // Outputs
         {"X0", "Xf"},                      // Input names
-        {"X", "U", "T", "dt"}                   // Output names
+        {"X", "U", "T", "dt"}              // Output names
     );
 }
 
