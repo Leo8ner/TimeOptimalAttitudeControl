@@ -18,7 +18,9 @@ int main() {
     // Constraints
     Constraints cons; // Create an instance of the Constraints class
 
-    CUDAOptimizer opti( cons); // Create an instance of the optimizer class
+    OptimizedDynamicsIntegrator dyn; // Create an instance of the optimized dynamics integrator
+
+    CUDAOptimizer opti(dyn, cons); // Create an instance of the optimizer class
 
     // Call the solver
     DMDict inputs = {{"X0", cons.X_0}, {"Xf", cons.X_f}};

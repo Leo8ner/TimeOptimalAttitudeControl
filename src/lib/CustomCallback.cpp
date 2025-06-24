@@ -1,114 +1,84 @@
-#include <toac/dynamics.h>
+#include <toac/casadi_callback.h>
 
 using namespace casadi;
 
-// Constructor
-CUDADynamicsCallback::CUDADynamicsCallback(const std::string& name, int n_states, int n_controls)
-    : n_X(n_states), n_U(n_controls) {
+
+CUDACallback::CUDACallback(const std::string& name) {
+    // Initialize the callback with the given name
+    construct(name);
+    integrator = std::make_unique<OptimizedDynamicsIntegrator>(false);
+}
+
+// Input/output dimensions
+casadi_int CUDACallback::get_n_in() { return 3; }  // X_current, U, dt
+casadi_int CUDACallback::get_n_out() { return 1; } // X_next
     
-    // Initialize CUDA integrator
-    cuda_integrator = std::make_unique<CUDADynamics>();
-    
-    // Define callback signature
-    construct(name, {});
-}
-
-
-// Required: Get number of inputs
-casadi_int CUDADynamicsCallback::get_n_in() {
-    return 3;  // X_current, U_current, dt_current
-}
-
-// Required: Get number of outputs  
-casadi_int CUDADynamicsCallback::get_n_out() {
-    return 1;  // Final states
-}
-
-// Required: Main evaluation function
-std::vector<DM> CUDADynamicsCallback::eval(const std::vector<DM>& arg) const {
-    // Input validation
-    if (arg.size() != 3) {
-        throw std::runtime_error("CUDADynamicsCallback expects exactly 3 inputs");
+std::string CUDACallback::get_name_in(casadi_int i) {
+    switch(i) {
+        case 0: return "X_current";  // 7 x n_stp
+        case 1: return "U";          // 3 x n_stp
+        case 2: return "dt";         // scalar
+        default: return "";
     }
+}
     
+std::string CUDACallback::get_name_out(casadi_int i) {
+    return i == 0 ? "X_next" : "";  // 7 x n_stp
+}
+    
+Sparsity CUDACallback::get_sparsity_in(casadi_int i) {
+    switch(i) {
+        case 0: return Sparsity::dense(7, n_stp);    // X_current
+        case 1: return Sparsity::dense(3, n_stp);    // U
+        case 2: return Sparsity::dense(1, 1);        // dt
+        default: return Sparsity();
+    }
+}
+    
+Sparsity CUDACallback::get_sparsity_out(casadi_int i) {
+    return i == 0 ? Sparsity::dense(7, n_stp) : Sparsity();
+}
+
+// Main evaluation function - calls batch CUDA integrator
+DMVector CUDACallback::eval(const DMVector& arg) const {
     // Extract inputs
-    DM X_current = arg[0];  // Current states (n_X x n_stp)
-    DM U_current = arg[1];  // Controls (n_U x n_stp)  
-    DM dt_current = arg[2]; // Time steps (n_stp x 1)
+    DM X_current = arg[0];  // 7 x n_stp
+    DM U = arg[1];          // 3 x n_stp  
+    DM dt_scalar = arg[2];  // scalar
     
-    // Validate input dimensions
-    if (X_current.size1() != n_X || X_current.size2() != n_stp) {
-        throw std::runtime_error("X_current has incorrect dimensions");
-    }
-    if (U_current.size1() != n_U || U_current.size2() != n_stp) {
-        throw std::runtime_error("U_current has incorrect dimensions");
-    }
-    if (dt_current.size1() != n_stp || dt_current.size2() != 1) {
-        throw std::runtime_error("dt_current has incorrect dimensions");
-    }
+    double dt_val = static_cast<double>(dt_scalar);
     
-    // Convert CasADi DM to std::vector<double>
-    std::vector<double> initial_states = X_current.get_elements();
-    std::vector<double> controls = U_current.get_elements();
-    std::vector<double> dt_values = dt_current.get_elements();
+    // Convert to batch integrator format
+    std::vector<std::vector<sunrealtype>> initial_states(n_stp);
+    std::vector<StepParams> step_params(n_stp);
     
-    // Call CUDA integrator
-    std::vector<double> final_states;
-    int status = cuda_integrator->integrate_parallel(
-        initial_states, controls, dt_values, final_states);
+    for(int i = 0; i < n_stp; i++) {
+        // Extract initial state for step i: [q0, q1, q2, q3, wx, wy, wz]
+        initial_states[i].resize(7);
+        for(int j = 0; j < 7; j++) {
+            initial_states[i][j] = static_cast<sunrealtype>(X_current(j, i));
+        }
         
-    if (status != 0) {
-        throw std::runtime_error("CUDA integration failed with status: " + std::to_string(status));
+        // Extract control inputs for step i: [tau_x, tau_y, tau_z]
+        step_params[i] = StepParams(
+            static_cast<sunrealtype>(U(0, i)),  // tau_x
+            static_cast<sunrealtype>(U(1, i)),  // tau_y
+            static_cast<sunrealtype>(U(2, i))   // tau_z
+        );
     }
     
-    // Convert back to CasADi format and reshape
-    DM result = reshape(DM(final_states), n_X, n_stp);
+    // Call batch CUDA integrator
+    integrator->solve(initial_states, step_params, dt_val);
     
-    return {result};
-}
-
-// Required: Main evaluation function
-std::vector<MX> CUDADynamicsCallback::eval(const std::vector<MX>& arg) const {
-    // Input validation
-    if (arg.size() != 3) {
-        throw std::runtime_error("CUDADynamicsCallback expects exactly 3 inputs");
+    // Get results and convert back to CasADi format
+    auto solutions = integrator->getAllSolutions();
+    DM X_next = DM::zeros(7, n_stp);
+    
+    for(int i = 0; i < n_stp; i++) {
+        for(int j = 0; j < 7; j++) {
+            X_next(j, i) = solutions[i][j];
+        }
     }
     
-    // Extract inputs
-    MX X_current = arg[0];  // Current states (n_X x n_stp)
-    MX U_current = arg[1];  // Controls (n_U x n_stp)  
-    MX dt_current = arg[2]; // Time steps (n_stp x 1)
-    
-    // Validate input dimensions
-    if (X_current.size1() != n_X || X_current.size2() != n_stp) {
-        throw std::runtime_error("X_current has incorrect dimensions");
-    }
-    if (U_current.size1() != n_U || U_current.size2() != n_stp) {
-        throw std::runtime_error("U_current has incorrect dimensions");
-    }
-    if (dt_current.size1() != n_stp || dt_current.size2() != 1) {
-        throw std::runtime_error("dt_current has incorrect dimensions");
-    }
-    
-    return {arg[0]};  // Return the current states as output
-}
-
-// Factory method to create the callback
-Function CUDADynamicsCallback::create_function(const std::string& name, int n_states, int n_controls) {
-    // Create callback instance
-    auto callback = std::make_shared<CUDADynamicsCallback>(
-        name, n_states, n_controls);
-    
-    // Create CasADi function from callback
-    std::vector<MX> inputs = {
-        MX::sym("X_current", n_states, n_stp),
-        MX::sym("U_current", n_controls, n_stp), 
-        MX::sym("dt_current", n_stp, 1)
-    };
-    
-    std::vector<MX> outputs = callback->eval(inputs);
-    
-    return Function(name, inputs, outputs, 
-                    {"X_current", "U_current", "dt_current"}, 
-                    {"X_final"});
+    return {X_next};
 }

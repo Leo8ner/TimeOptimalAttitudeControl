@@ -9,7 +9,7 @@
 
 using namespace casadi;
 
-class Optimizer {
+class CUDAOptimizer {
 
     Function F; // Dynamics functions
     DM lb_U, ub_U, lb_dt, ub_dt;
@@ -19,10 +19,13 @@ class Optimizer {
     MX X, U, T, dt;
     MX p_X0, p_Xf;                      // Parameters
 
+    void setupOptimizationProblem();
+
 public:
 
     Function solver; // Solver function
-    Optimizer(const Function& dyn, const Constraints& cons);
+    CUDAOptimizer(const Function& dyn, const Constraints& cons);
+
 };
 
 Function get_solver();

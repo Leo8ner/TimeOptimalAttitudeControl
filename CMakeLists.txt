@@ -65,8 +65,7 @@ endif()
 # find the following packages
 find_package(Threads REQUIRED)
 
-add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp src/lib/CUDAdynamics.cu src/lib/CUDAoptimizer.cpp
-    src/lib/CustomCallback.cpp) 
+add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp src/lib/CUDAdynamics.cu) 
 target_include_directories(
     toac PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac
 )
@@ -84,7 +83,9 @@ file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
 
-add_executable(GenerateCode src/c_code_gen.cpp)
+add_executable(GenerateCode src/serial/bangbang/symmetric/c_code_gen.cpp)
+add_executable(GenerateCUDACode src/parallel/bangbang/symmetric/c_code_gen.cpp)
+
 # Link the executable to the CasADi library
 target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} ${IPOPT_LIBRARIES} toac)
 target_include_directories(GenerateCode PRIVATE ${CASADI_INCLUDE_DIRS} ${IPOPT_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)

@@ -16,13 +16,13 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
     X_0(cons.X_0), X_f(cons.X_f) {
 
     // Decision variables
-    X = opti.variable(n_X, n_stp + 1); // State trajectory    
-    U = opti.variable(n_U, n_stp);     // Control trajectory (torque)
+    X = opti.variable(n_states, n_stp + 1); // State trajectory    
+    U = opti.variable(n_controls, n_stp);     // Control trajectory (torque)
     dt = opti.variable(n_stp);         // Time horizon
 
     // Parameters
-    p_X0 = opti.parameter(n_X);           // Parameter for initial state
-    p_Xf = opti.parameter(n_X);           // Parameter for final state
+    p_X0 = opti.parameter(n_states);           // Parameter for initial state
+    p_Xf = opti.parameter(n_states);           // Parameter for final state
     
     //// Consraints ////
 
