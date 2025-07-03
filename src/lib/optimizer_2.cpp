@@ -20,32 +20,21 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
     p_Xf = opti.parameter(n_states);           // Parameter for final state
 
     Dict plugin_opts{}, solver_opts{};
-
-    // Initial guesses
-    DM X_guess = stateInterpolator(X_0, X_f, n_stp + 1);
-    DM U_guess = inputInterpolator(X_0(Slice(1,4)), X_f(Slice(1,4)), n_stp);
     
     if (plugin == "fatrop") {
-
-        // Reconstruct matrices for function interface compatibility
-        X = MX::zeros(n_states, n_stp + 1);
-        U = MX::zeros(n_controls, n_stp);
-        dt = MX::zeros(n_stp);
-
         // Define structure arrays for Fatrop
-        std::vector<int> nx(n_stp + 1, n_states);
-        std::vector<int> nu(n_stp + 1, 0);
-        std::vector<int> ng(n_stp + 1, 0);
+        std::vector<int> nx(n_stp + 1, n_states);  // 12 states at each time step
+        std::vector<int> nu(n_stp + 1, 0);         // Control + dt variables
+        std::vector<int> ng(n_stp + 1, 0);         // Path constraints
         
         for (int k = 0; k < n_stp; ++k) {
-            nu[k] = n_controls + 1;  // controls + dt
-            ng[k] = 1 + (n_controls) + 1;  // quat_norm + control bounds + time step bound
+            nu[k] = n_controls + 1;  // 4 controls + 1 dt variable
+            ng[k] = 1;  // Quaternion normalization constraint
         }
-        nu[n_stp] = 0;
-        ng[0] += n_states - 1;  // Initial state constraints
-        ng[n_stp] = n_states;   // Final quat_norm + final state constraints
+        nu[n_stp] = 0;  // No controls at final time step
+        ng[n_stp] = 1;  // Quaternion normalization constraint at final step
         
-        // Create variables.
+        // Create decision variables for each time step
         std::vector<MX> x(n_stp + 1);
         std::vector<MX> u(n_stp + 1);
         
@@ -54,36 +43,48 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
             u[k] = opti.variable(nu[k]);
         }
         
-        for (int k = 0; k < n_stp; ++k) {
+        // Extract variables for compatibility with existing code
+        X = MX::zeros(n_states, n_stp + 1);
+        U = MX::zeros(n_controls, n_stp);
+        dt = MX::zeros(n_stp);
+        
+        for (int k = 0; k <= n_stp; ++k) {
             X(all, k) = x[k];
-            U(all, k) = u[k](Slice(0, n_controls));
-            dt(k) = u[k](n_controls);
+            if (k < n_stp) {
+                U(all, k) = u[k](Slice(0, n_controls));
+                dt(k) = u[k](n_controls);
+            }
         }
-        X(all, n_stp) = x[n_stp];
-
+        
+        // Constraints in required order: dynamics, path constraints
         for (int k = 0; k < n_stp; ++k) {
-            // Dynamics
+            // Discrete dynamics constraint
             MX X_kp1 = F(MXDict{{"x0", x[k]}, {"u", u[k](Slice(0, n_controls))}, {"p", u[k](n_controls)}}).at("xf");
-            opti.subject_to(x[k+1] == X_kp1);  // State at next time step
+            opti.subject_to(x[k+1] == X_kp1);
             
             // Path constraints
-            if (k == 0) {
-                opti.subject_to(x[k] == p_X0);  // Initial state
-            } else {
-                opti.subject_to(sum1(pow(x[k](Slice(0,4)), 2)) == 1);  // Quaternion norm
-            }
-            opti.subject_to(lb_U <= u[k](Slice(0, n_controls)) <= ub_U);  // Control upper bounds
-            opti.subject_to(0 <= u[k](n_controls));  // dt > 0
+            opti.subject_to(sum1(pow(x[k](Slice(0,4)), 2)) == 1);  // Quaternion normalization
+            opti.subject_to(u[k](n_controls) > 0);  // Time step > 0
+            opti.subject_to(opti.bounded(lb_U, u[k](Slice(0, n_controls)), ub_U));  // Control bounds
         }
         
-        // Final time step path constraints
-        opti.subject_to(x[n_stp] == p_Xf);  // Final state
+        // Path constraint at final time step
+        opti.subject_to(sum1(pow(x[n_stp](Slice(0,4)), 2)) == 1);  // Quaternion normalization
+        
+        // Initial and final conditions
+        opti.subject_to(x[0] == p_X0);
+        opti.subject_to(x[n_stp] == p_Xf);
         
         // Objective function
-        T = MX::zeros(1);
+        MX T = MX::zeros(1);
         for (int k = 0; k < n_stp; ++k) {
             T += u[k](n_controls);
         }
+        opti.minimize(T);
+        
+        // Initial guess
+        DM X_guess = stateInterpolator(X_0, X_f, n_stp+1);
+        DM U_guess = inputInterpolator(X_0(Slice(1,4)), X_f(Slice(1,4)), n_stp);
         
         for (int k = 0; k <= n_stp; ++k) {
             opti.set_initial(x[k], X_guess(all, k));
@@ -98,39 +99,29 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         // Solver configuration
         plugin_opts = {
             {"expand", false},
-            {"structure_detection", "auto"},
-            //{"nx", nx},
-            //{"nu", nu}, 
-            //{"ng", ng},
-            //{"N", n_stp},
+            {"structure_detection", "manual"},
+            {"nx", nx},
+            {"nu", nu}, 
+            {"ng", ng},
+            {"N", n_stp},
             {"debug", true}
         };
-        solver_opts = {
-            {"print_level", 4},
-            //{"tol", 1e-8},              // Main tolerance
-            
+        solver_opts = {       
+            {"print_level", 4}
         };
-
-        // Set the objective function
-        opti.minimize(T);
-        opti.solver(plugin, plugin_opts, solver_opts);
-
-        solver = opti.to_function("solver",
-            {p_X0, p_Xf},
-            {X, U, T, dt},
-            {"X0", "Xf"},
-            {"X", "U", "T", "dt"}
-        );
         
         
     } else if (plugin == "ipopt") {
-
-        // Define variables
+        // Keep original IPOPT implementation
         X = opti.variable(n_states, n_stp + 1);
         U = opti.variable(n_controls, n_stp);
         dt = opti.variable(n_stp);
-        T = sum(dt);  // Total time
-
+        
+        MX T = sum(dt);
+        opti.minimize(T);
+        
+        DM X_guess = stateInterpolator(X_0, X_f, n_stp+1);
+        DM U_guess = inputInterpolator(X_0(Slice(1,4)), X_f(Slice(1,4)), n_stp);
         
         MX X_kp1 = F(MXDict{{"x0", X(all,Slice(0, n_stp))}, {"u", U}, {"p", dt}}).at("xf");
         opti.subject_to(X(all,Slice(1, n_stp+1)) == X_kp1);
@@ -145,23 +136,20 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         opti.set_initial(dt, dt_0*DM::ones(n_stp));
         opti.set_initial(X, X_guess);
         opti.set_initial(U, U_guess);
-
-        // Set the objective function
-        opti.minimize(T);
-        opti.solver(plugin, plugin_opts, solver_opts);
-
-        solver = opti.to_function("solver",
-            {p_X0, p_Xf},
-            {X, U, T, dt},
-            {"X0", "Xf"},
-            {"X", "U", "T", "dt"}
-        );
                 
     } else {
         throw std::invalid_argument("Unsupported solver type: " + plugin);
     }
 
+    opti.solver(plugin, plugin_opts, solver_opts);
 
+    
+    solver = opti.to_function("solver",
+        {p_X0, p_Xf},
+        {X, U, T, dt},
+        {"X0", "Xf"},
+        {"X", "U", "T", "dt"}
+    );
 }
 
 DM stateInterpolator(const DM& x0, const DM& xf, int n_steps) {

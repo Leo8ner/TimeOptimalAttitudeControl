@@ -12,14 +12,15 @@ namespace fs = std::filesystem;
 
 int main(){
 
+    std::string plugin = "fatrop"; // Specify the solver plugin to use
     // Dynamics
     //Dynamics dyn; // Create an instance of the Dynamics class
-    ImplicitDynamics dyn; // Create an instance of the DynCvodes class
+    ImplicitDynamics dyn(plugin); // Create an instance of the DynCvodes class
     // Constraints
     Constraints cons; // Create an instance of the Constraints class
 
     // Solver
-    Optimizer opti(dyn.F, cons);     // Create an instance of the Optimizer class
+    Optimizer opti(dyn.F, cons, plugin);     // Create an instance of the Optimizer class
 
     // options for c-code auto generation
     casadi::Dict opts = casadi::Dict();
@@ -40,7 +41,7 @@ int main(){
     std::string compile_command = "gcc -fPIC -shared -O3 " + 
         prefix_code + "solver.c -o " +
         prefix_lib + "lib_solver.so " +
-        "-lipopt";
+         "-lfatrop " + "-lipopt";
     std::cout << compile_command << std::endl;
 
     int compile_flag = std::system(compile_command.c_str());

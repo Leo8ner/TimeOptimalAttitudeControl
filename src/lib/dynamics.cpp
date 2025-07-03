@@ -43,7 +43,7 @@ SX rk4(const SX& x_dot, const SX& x, const SX& dt) {
     return x + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4);
 }
 
-ImplicitDynamics::ImplicitDynamics() {
+ImplicitDynamics::ImplicitDynamics(const std::string& plugin) {
     SX X = SX::vertcat({SX::sym("q", 4), SX::sym("w", 3)});
     SX U = SX::sym("tau", 3);
     SX dt = SX::sym("dt");
@@ -63,10 +63,22 @@ ImplicitDynamics::ImplicitDynamics() {
     // Create integrator options
     SXDict dae = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
     Dict opts;
-    opts["collocation_scheme"] = "legendre";
-    opts["interpolation_order"] = 3;
-    opts["simplify"] = true;
-    opts["rootfinder"] = "fast_newton";
-    Function f = integrator("f", "collocation", dae, opts);
-    F = f.map(n_stp, "serial");
+    if (plugin == "ipopt") {
+        opts["collocation_scheme"] = "legendre";
+        opts["interpolation_order"] = 3;
+        opts["simplify"] = true;
+        opts["rootfinder"] = "fast_newton";
+        Function f = integrator("f", "collocation", dae, opts);
+        F = f.map(n_stp, "unroll");
+
+    } else if (plugin == "fatrop") {
+        opts["collocation_scheme"] = "radau";
+        opts["interpolation_order"] = 4;
+        opts["simplify"] = true;
+        opts["rootfinder"] = "fast_newton";
+        Function f = integrator("f", "collocation", dae, opts);
+        F = f;
+    } else {
+        throw std::invalid_argument("Unsupported solver type: " + plugin);
+    }
 }

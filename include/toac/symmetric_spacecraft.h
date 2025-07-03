@@ -24,7 +24,7 @@ inline constexpr float wz_f{0.0f};             // Final yaw rate----------------
 
 // SIM parameters
 inline constexpr float T_0{2.4f};              // Time horizon initial guess------, s
-inline constexpr int n_stp{50};                // Number of time steps------------, -
+inline constexpr int n_stp{25};                // Number of time steps------------, -
 inline constexpr float dt_0{T_0/n_stp};        // Time step initial guess---------, s
 inline constexpr float dt_min{0.00001f};       // Minimum time step---------------, s
 inline constexpr float dt_max{1.0f};           // Maximum time step---------------, s

@@ -9,10 +9,12 @@ SET(CMAKE_EXE_LINKER_FLAGS
 
 # for using casadi
 find_package(casadi REQUIRED)
+message(STATUS "CasADi found at: ${casadi_DIR}")
 # For multi threading
 find_package(Threads REQUIRED)
 # For integration
 find_package(SUNDIALS REQUIRED)
+
 # For GPU acceleration
 find_package(CUDAToolkit REQUIRED)
 enable_language(CUDA)
@@ -65,7 +67,9 @@ endif()
 # find the following packages
 find_package(Threads REQUIRED)
 
-add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp src/lib/CUDAdynamics.cu) 
+add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp) 
+# add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp src/lib/CUDAdynamics.cu) 
+
 target_include_directories(
     toac PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac
 )
@@ -84,7 +88,7 @@ file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
 
 add_executable(GenerateCode src/serial/bangbang/symmetric/c_code_gen.cpp)
-add_executable(GenerateCUDACode src/parallel/bangbang/symmetric/c_code_gen.cpp)
+# add_executable(GenerateCUDACode src/parallel/bangbang/symmetric/c_code_gen.cpp)
 
 # Link the executable to the CasADi library
 target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} ${IPOPT_LIBRARIES} toac)
@@ -102,17 +106,17 @@ add_executable(SerialBangbangSymmetricCodeGen src/serial/bangbang/symmetric/main
 target_link_libraries(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-add_executable(ParallelBangbangSymmetric src/parallel/bangbang/symmetric/main.cpp)
-target_link_libraries(ParallelBangbangSymmetric PRIVATE
-    ${CASADI_LIBRARIES}
-    SUNDIALS::cvode
-    SUNDIALS::nveccuda  
-    CUDA::cudart
-    CUDA::cusparse
-    toac
-)
+# add_executable(ParallelBangbangSymmetric src/parallel/bangbang/symmetric/main.cpp)
+# target_link_libraries(ParallelBangbangSymmetric PRIVATE
+#     ${CASADI_LIBRARIES}
+#     SUNDIALS::cvode
+#     SUNDIALS::nveccuda  
+#     CUDA::cudart
+#     CUDA::cusparse
+#     toac
+# )
 
-set_property(TARGET ParallelBangbangSymmetric PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+# set_property(TARGET ParallelBangbangSymmetric PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
 # Runs GenerateCode automatically after build
 add_custom_target(run_codegen

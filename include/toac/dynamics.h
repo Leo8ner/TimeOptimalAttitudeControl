@@ -25,7 +25,7 @@ struct ImplicitDynamics {
     
     Function F; 
 
-    ImplicitDynamics();
+    ImplicitDynamics(const std::string& plugin = "ipopt");
 };
 
 // Takes a 3D vector w and returns a 4x4 skew-symmetric matrix

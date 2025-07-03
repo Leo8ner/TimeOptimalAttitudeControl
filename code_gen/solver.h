@@ -34,10 +34,10 @@ const casadi_int* solver_sparsity_in(casadi_int i);
 const casadi_int* solver_sparsity_out(casadi_int i);
 int solver_work(casadi_int *sz_arg, casadi_int* sz_res, casadi_int *sz_iw, casadi_int *sz_w);
 int solver_work_bytes(casadi_int *sz_arg, casadi_int* sz_res, casadi_int *sz_iw, casadi_int *sz_w);
-#define solver_SZ_ARG 301
-#define solver_SZ_RES 62
-#define solver_SZ_IW 558
-#define solver_SZ_W 119678
+#define solver_SZ_ARG 154
+#define solver_SZ_RES 115
+#define solver_SZ_IW 1581
+#define solver_SZ_W 54983
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

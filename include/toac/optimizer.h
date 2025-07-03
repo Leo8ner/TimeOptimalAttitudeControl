@@ -3,7 +3,6 @@
 
 #include <casadi/casadi.hpp>
 #include <toac/symmetric_spacecraft.h>
-#include <toac/cuda_dynamics.h>
 #include <toac/constraints.h>
 #include <filesystem>
 
@@ -22,7 +21,7 @@ class Optimizer {
 public:
 
     Function solver; // Solver function
-    Optimizer(const Function& dyn, const Constraints& cons);
+    Optimizer(const Function& dyn, const Constraints& cons, const std::string& plugin = "ipopt");
 };
 
 Function get_solver();

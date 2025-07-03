@@ -36,6 +36,7 @@ int main() {
     // Print the elapsed time
     std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
     std::cout << "Maneuver Duration: " << T << " s" << std::endl;
+    std::cout << "Optimal Duration for 90 deg turn: 2.42112 s" << std::endl;
 
 
     // Export the trajectory to a CSV file
