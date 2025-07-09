@@ -2,6 +2,7 @@
 
 // Device arrays for step parameters (constant during integration)
 __device__ TorqueParams* d_torque_params;
+__device__ __constant__ sunrealtype d_inertia_constants[12];
 
 // Optimized RHS kernel with better memory access patterns
 __global__ void dynamicsRHS(int n_total, sunrealtype* y, sunrealtype* ydot,
@@ -158,17 +159,26 @@ __global__ void sparseJacobian(int n_blocks, sunrealtype* block_data, sunrealtyp
     block_jac[idx++] = zero;                       // J[6,6] diagonal
 }
 
-__global__ void sparseHessian(int n_systems, sunrealtype* hess_data, sunrealtype* y, sunindextype* row_ptrs) {
-    __shared__ sunrealtype shared_states[32][7];  // 32 steps per block
+// GPU kernel for sensitivity RHS computation
+__global__ void sensitivityRHS(int n_total, int Ns, 
+                                     sunrealtype* y, sunrealtype* yS_data, 
+                                     sunrealtype* ySdot_data, int param_idx) {
     int sys = blockIdx.x * blockDim.x + threadIdx.x;
-    int equation_in_sys = threadIdx.y;  // Which equation within the system (0-6)
+    if (sys >= n_stp) return;
     
-    if (sys >= n_systems) return;
+    int base_idx = sys * n_states;
     
-    int global_equation = sys * n_states + equation_in_sys;
-    int base_state_idx = sys * n_states;
-
-    // Use constant memory
+    // Load state variables
+    sunrealtype q0 = y[base_idx + 0], q1 = y[base_idx + 1];
+    sunrealtype q2 = y[base_idx + 2], q3 = y[base_idx + 3];
+    sunrealtype wx = y[base_idx + 4], wy = y[base_idx + 5], wz = y[base_idx + 6];
+    
+    // Load sensitivity variables for this parameter
+    sunrealtype s_q0 = yS_data[base_idx + 0], s_q1 = yS_data[base_idx + 1];
+    sunrealtype s_q2 = yS_data[base_idx + 2], s_q3 = yS_data[base_idx + 3];
+    sunrealtype s_wx = yS_data[base_idx + 4], s_wy = yS_data[base_idx + 5], s_wz = yS_data[base_idx + 6];
+    
+    // Get constants
     const sunrealtype half = d_inertia_constants[3];
     const sunrealtype minus_half = d_inertia_constants[10];
     const sunrealtype zero = d_inertia_constants[11];
@@ -176,103 +186,72 @@ __global__ void sparseHessian(int n_systems, sunrealtype* hess_data, sunrealtype
     const sunrealtype Iy_inv = d_inertia_constants[5];
     const sunrealtype Iz_inv = d_inertia_constants[6];
     const sunrealtype Iz_minus_Iy = d_inertia_constants[7];
-    const sunrealtype Iy_minus_Ix = d_inertia_constants[8];
-    const sunrealtype Ix_minus_Iz = d_inertia_constants[9];
+    const sunrealtype Ix_minus_Iz = d_inertia_constants[8];
+    const sunrealtype Iy_minus_Ix = d_inertia_constants[9];
     
-    // Each equation gets a row in the Hessian matrix
-    // Row size is n_total × n_total, but most entries are zero
-    int hess_row_start = row_ptrs[global_equation];
-    int hess_row_end = row_ptrs[global_equation + 1];
-    int num_entries = hess_row_end - hess_row_start;
+    // Determine parameter type and system
+    int param_sys = param_idx / (n_states + 3);  // Which system this parameter belongs to
+    int param_type = param_idx % (n_states + 3); // Type: 0-6 = initial conditions, 7-9 = torques
     
-    sunrealtype* hess_row = hess_data + hess_row_start;
+    // Compute Jacobian * sensitivity (J * s)
+    sunrealtype Js[n_states];
     
-    // Initialize to zero
-    for (int i = 0; i < num_entries; i++) {
-        hess_row[i] = zero;
-    }   
-
-    // Extract state variables for this system
-    sunrealtype state_vars[n_states];
-
-    if (sys < n_systems && threadIdx.y == 0) {  // Only one thread per spacecraft loads
-        int base_state_idx = sys * n_states;
-        #pragma unroll
-        for (int i = 0; i < n_states; i++) {
-            shared_states[threadIdx.x][i] = y[base_state_idx + i];
+    // Row 0: dq0_dot/dy * s
+    Js[0] = zero * s_q0 + minus_half * wx * s_q1 + minus_half * wy * s_q2 + minus_half * wz * s_q3 +
+            minus_half * q1 * s_wx + minus_half * q2 * s_wy + minus_half * q3 * s_wz;
+    
+    // Row 1: dq1_dot/dy * s  
+    Js[1] = half * wx * s_q0 + zero * s_q1 + half * wz * s_q2 + minus_half * wy * s_q3 +
+            half * q0 * s_wx + minus_half * q3 * s_wy + half * q2 * s_wz;
+    
+    // Row 2: dq2_dot/dy * s
+    Js[2] = half * wy * s_q0 + minus_half * wz * s_q1 + zero * s_q2 + half * wx * s_q3 +
+            half * q3 * s_wx + half * q0 * s_wy + minus_half * q1 * s_wz;
+    
+    // Row 3: dq3_dot/dy * s
+    Js[3] = half * wz * s_q0 + half * wy * s_q1 + minus_half * wx * s_q2 + zero * s_q3 +
+            minus_half * q2 * s_wx + half * q1 * s_wy + half * q0 * s_wz;
+    
+    // Row 4: dwx_dot/dy * s
+    Js[4] = zero * s_wx + Ix_inv * Iz_minus_Iy * wz * s_wy + Ix_inv * Iz_minus_Iy * wy * s_wz;
+    
+    // Row 5: dwy_dot/dy * s  
+    Js[5] = Iy_inv * Ix_minus_Iz * wz * s_wx + zero * s_wy + Iy_inv * Ix_minus_Iz * wx * s_wz;
+    
+    // Row 6: dwz_dot/dy * s
+    Js[6] = Iz_inv * Iy_minus_Ix * wy * s_wx + Iz_inv * Iy_minus_Ix * wx * s_wy + zero * s_wz;
+    
+    // Add parameter derivatives (df/dp)
+    if (param_sys == sys) {
+        if (param_type < n_states) {
+            // Initial condition parameter - no direct dependency in RHS
+            // Js already contains the correct values
+        } else {
+            // Torque parameter
+            int torque_idx = param_type - n_states;  // 0=tau_x, 1=tau_y, 2=tau_z
+            if (torque_idx == 0) {
+                Js[4] += Ix_inv;  // df4/dtau_x = 1/Ix
+            } else if (torque_idx == 1) {
+                Js[5] += Iy_inv;  // df5/dtau_y = 1/Iy
+            } else if (torque_idx == 2) {
+                Js[6] += Iz_inv;  // df6/dtau_z = 1/Iz
+            }
         }
     }
     
-    __syncthreads();  // Wait for all loads
-
-    sunrealtype q0 = shared_states[threadIdx.x][0];
-    sunrealtype q1 = shared_states[threadIdx.x][1];
-    sunrealtype q2 = shared_states[threadIdx.x][2];
-    sunrealtype q3 = shared_states[threadIdx.x][3];
-    sunrealtype wx = shared_states[threadIdx.x][4];
-    sunrealtype wy = shared_states[threadIdx.x][5];
-    sunrealtype wz = shared_states[threadIdx.x][6];
-
-    int idx = 0;
-    
-    // Fill Hessian entries based on which equation this is
-    switch(equation_in_sys) {
-        case 0: // q0_dot = 0.5 * (-q1*wx - q2*wy - q3*wz)
-            // ∂²q0_dot/∂q1∂wx = ∂²q0_dot/∂wx∂q1 = -0.5
-            hess_row[idx++] = minus_half;  // H[q1,wx]
-            hess_row[idx++] = minus_half;  // H[q2,wy]
-            hess_row[idx++] = minus_half;  // H[q3,wz]
-            hess_row[idx++] = minus_half;  // H[wx,q1] (symmetric)
-            hess_row[idx++] = minus_half;  // H[wy,q2] (symmetric)
-            hess_row[idx++] = minus_half;  // H[wz,q3] (symmetric)
-            break;
-            
-        case 1: // q1_dot = 0.5 * (q0*wx - q3*wy + q2*wz)
-            hess_row[idx++] = half;        // H[q0,wx]
-            hess_row[idx++] = half;        // H[q2,wz]
-            hess_row[idx++] = minus_half;  // H[q3,wy]
-            hess_row[idx++] = half;        // H[wx,q0] (symmetric)
-            hess_row[idx++] = minus_half;  // H[wy,q3] (symmetric)
-            hess_row[idx++] = half;        // H[wz,q2] (symmetric)
-            break;
-            
-        case 2: // q2_dot = 0.5 * (q3*wx + q0*wy - q1*wz)
-            hess_row[idx++] = half;        // H[q0,wy]
-            hess_row[idx++] = minus_half;  // H[q1,wz]
-            hess_row[idx++] = half;        // H[q3,wx]
-            hess_row[idx++] = half;        // H[wx,q3] (symmetric)
-            hess_row[idx++] = half;        // H[wy,q0] (symmetric)
-            hess_row[idx++] = minus_half;  // H[wz,q1] (symmetric)
-            break;
-            
-        case 3: // q3_dot = 0.5 * (-q2*wx + q1*wy + q0*wz)
-            hess_row[idx++] = half;        // H[q0,wz]
-            hess_row[idx++] = half;        // H[q1,wy]
-            hess_row[idx++] = minus_half;  // H[q2,wx]
-            hess_row[idx++] = minus_half;  // H[wx,q2] (symmetric)
-            hess_row[idx++] = half;        // H[wy,q1] (symmetric)
-            hess_row[idx++] = half;        // H[wz,q0] (symmetric)
-            break;
-            
-        case 4: // wx_dot = Ix_inv * (tau_x - wy*wz*(Iz - Iy))
-            hess_row[idx++] = -Ix_inv * Iz_minus_Iy;  // H[wy,wz]
-            hess_row[idx++] = -Ix_inv * Iz_minus_Iy;  // H[wz,wy] (symmetric)
-            break;
-            
-        case 5: // wy_dot = Iy_inv * (tau_y - wz*wx*(Ix - Iz))
-            hess_row[idx++] = -Iy_inv * Ix_minus_Iz;  // H[wx,wz]
-            hess_row[idx++] = -Iy_inv * Ix_minus_Iz;  // H[wz,wx] (symmetric)
-            break;
-            
-        case 6: // wz_dot = Iz_inv * (tau_z - wx*wy*(Iy - Ix))
-            hess_row[idx++] = -Iz_inv * Iy_minus_Ix;  // H[wx,wy]
-            hess_row[idx++] = -Iz_inv * Iy_minus_Ix;  // H[wy,wx] (symmetric)
-            break;
+    // Store results
+    #pragma unroll
+    for (int i = 0; i < n_states; i++) {
+        ySdot_data[base_idx + i] = Js[i];
     }
 }
 
+
 // Constructor - performs one-time setup
-DynamicsIntegrator::DynamicsIntegrator(bool verb) : n_total(N_TOTAL_STATES), setup_time(0), solve_time(0), verbose(verb) {
+DynamicsIntegrator::DynamicsIntegrator(bool verb) : 
+    n_total(N_TOTAL_STATES), setup_time(0), solve_time(0), verbose(verb),
+    yS(nullptr), Ns(0), sensitivity_enabled(false),
+    d_param_indices(nullptr), d_jacobian_workspace(nullptr) {
     timer.start();
     
     // Initialize constant memory with precomputed values
@@ -334,7 +313,7 @@ DynamicsIntegrator::DynamicsIntegrator(bool verb) : n_total(N_TOTAL_STATES), set
     CUDA_CHECK(cudaMemcpyToSymbol(d_torque_params, &d_torque_params_ptr, sizeof(TorqueParams*)));
 
     // Allocate Hessian matrix structure
-    setupHessianStructure();
+    //setupHessianStructure();
     
     cvode_mem = CVodeCreate(CV_BDF, sunctx);
     if (!cvode_mem) {
@@ -357,9 +336,22 @@ DynamicsIntegrator::~DynamicsIntegrator() {
     if (d_torque_params_ptr) cudaFree(d_torque_params_ptr);
     if (h_y_pinned) cudaFreeHost(h_y_pinned);
     if (sunctx) SUNContext_Free(&sunctx);
-    if (Hes) SUNMatDestroy(Hes);
+    if (d_param_indices) cudaFree(d_param_indices);
+    if (d_jacobian_workspace) cudaFree(d_jacobian_workspace);
+
+    // Clean up sensitivity vectors
+    if (yS) {
+        N_VDestroyVectorArray(yS, Ns);
+    }
 }
 
+// // Enable/disable sensitivity analysis
+// void DynamicsIntegrator::enableSensitivityAnalysis(bool enable) {
+//     sensitivity_enabled = enable;
+//     if (enable && !yS) {
+//         setupSensitivityAnalysis();
+//     }
+// }
 void DynamicsIntegrator::setupJacobianStructure() {
     std::vector<sunindextype> h_rowptrs(n_states + 1);
     std::vector<sunindextype> h_colvals(NNZ_PER_BLOCK);
@@ -415,115 +407,54 @@ void DynamicsIntegrator::setupJacobianStructure() {
     SUNMatrix_cuSparse_SetFixedPattern(Jac, SUNTRUE);
 }
 
-// Setup full system Hessian structure  
-void DynamicsIntegrator::setupHessianStructure() {
-    // Create Hessian matrix: n_total rows × (n_total × n_total) columns
-    // But we only store non-zero entries for each equation
-    int hess_rows = n_total;
-    int hess_cols = n_total * n_total;  // Flattened Hessian tensor
-    int total_hess_nnz = TOTAL_HESSIAN_NNZ;
+// // Setup sensitivity analysis
+// int DynamicsIntegrator::setupSensitivityAnalysis() {
+//     // Number of parameters: n_states initial conditions + 3 torque params per system
+//     Ns = n_stp * (n_states + 3);
     
-    Hes = SUNMatrix_cuSparse_NewCSR(hess_rows, hess_cols, total_hess_nnz, cusparse_handle, sunctx);
-    if (!Hes) {
-        std::cerr << "Error creating full Hessian matrix" << std::endl;
-        exit(1);
-    }
+//     // Create parameter mapping
+//     param_map.resize(Ns);
+//     for (int sys = 0; sys < n_stp; sys++) {
+//         for (int i = 0; i < n_states + 3; i++) {
+//             param_map[sys * (n_states + 3) + i] = sys * 1000 + i; // Encode sys and param type
+//         }
+//     }
     
-    // Build sparsity pattern for the full Hessian matrix
-    std::vector<sunindextype> h_rowptrs(hess_rows + 1);
-    std::vector<sunindextype> h_colvals(total_hess_nnz);
+//     // Create sensitivity vectors on GPU
+//     yS = N_VCloneVectorArray(Ns, y);
+//     if (!yS) {
+//         std::cerr << "Error creating sensitivity vectors" << std::endl;
+//         return -1;
+//     }
     
-    int nnz_count = 0;
+//     // Allocate workspace for Jacobian computation
+//     CUDA_CHECK(cudaMalloc(&d_jacobian_workspace, Ns * n_total * sizeof(sunrealtype)));
     
-    // For each equation (row in the Hessian matrix)
-    for (int eq = 0; eq < n_total; eq++) {
-        h_rowptrs[eq] = nnz_count;
-        
-        int sys = eq / n_states;  // Which system this equation belongs to
-        int eq_in_sys = eq % n_states;  // Which equation within the system
-        
-        int base_col_offset = sys * n_states;  // Base column offset for this system
-        
-        // Add column indices for non-zero Hessian entries
-        // Only entries within the same system are non-zero (no cross-coupling)
-        switch(eq_in_sys) {
-            case 0: // q0_dot equation
-                // Flattened indices for mixed partial derivatives
-                h_colvals[nnz_count++] = (base_col_offset + 1) * n_total + (base_col_offset + 4); // H[q1,wx]
-                h_colvals[nnz_count++] = (base_col_offset + 2) * n_total + (base_col_offset + 5); // H[q2,wy]
-                h_colvals[nnz_count++] = (base_col_offset + 3) * n_total + (base_col_offset + 6); // H[q3,wz]
-                h_colvals[nnz_count++] = (base_col_offset + 4) * n_total + (base_col_offset + 1); // H[wx,q1]
-                h_colvals[nnz_count++] = (base_col_offset + 5) * n_total + (base_col_offset + 2); // H[wy,q2]
-                h_colvals[nnz_count++] = (base_col_offset + 6) * n_total + (base_col_offset + 3); // H[wz,q3]
-                break;
-                
-            case 1: // q1_dot equation
-                h_colvals[nnz_count++] = (base_col_offset + 0) * n_total + (base_col_offset + 4); // H[q0,wx]
-                h_colvals[nnz_count++] = (base_col_offset + 2) * n_total + (base_col_offset + 6); // H[q2,wz]
-                h_colvals[nnz_count++] = (base_col_offset + 3) * n_total + (base_col_offset + 5); // H[q3,wy]
-                h_colvals[nnz_count++] = (base_col_offset + 4) * n_total + (base_col_offset + 0); // H[wx,q0]
-                h_colvals[nnz_count++] = (base_col_offset + 5) * n_total + (base_col_offset + 3); // H[wy,q3]
-                h_colvals[nnz_count++] = (base_col_offset + 6) * n_total + (base_col_offset + 2); // H[wz,q2]
-                break;
-                
-            case 2: // q2_dot equation
-                h_colvals[nnz_count++] = (base_col_offset + 0) * n_total + (base_col_offset + 5); // H[q0,wy]
-                h_colvals[nnz_count++] = (base_col_offset + 1) * n_total + (base_col_offset + 6); // H[q1,wz]
-                h_colvals[nnz_count++] = (base_col_offset + 3) * n_total + (base_col_offset + 4); // H[q3,wx]
-                h_colvals[nnz_count++] = (base_col_offset + 4) * n_total + (base_col_offset + 3); // H[wx,q3]
-                h_colvals[nnz_count++] = (base_col_offset + 5) * n_total + (base_col_offset + 0); // H[wy,q0]
-                h_colvals[nnz_count++] = (base_col_offset + 6) * n_total + (base_col_offset + 1); // H[wz,q1]
-                break;
-                
-            case 3: // q3_dot equation
-                h_colvals[nnz_count++] = (base_col_offset + 0) * n_total + (base_col_offset + 6); // H[q0,wz]
-                h_colvals[nnz_count++] = (base_col_offset + 1) * n_total + (base_col_offset + 5); // H[q1,wy]
-                h_colvals[nnz_count++] = (base_col_offset + 2) * n_total + (base_col_offset + 4); // H[q2,wx]
-                h_colvals[nnz_count++] = (base_col_offset + 4) * n_total + (base_col_offset + 2); // H[wx,q2]
-                h_colvals[nnz_count++] = (base_col_offset + 5) * n_total + (base_col_offset + 1); // H[wy,q1]
-                h_colvals[nnz_count++] = (base_col_offset + 6) * n_total + (base_col_offset + 0); // H[wz,q0]
-                break;
-                
-            case 4: // wx_dot equation
-                h_colvals[nnz_count++] = (base_col_offset + 5) * n_total + (base_col_offset + 6); // H[wy,wz]
-                h_colvals[nnz_count++] = (base_col_offset + 6) * n_total + (base_col_offset + 5); // H[wz,wy]
-                break;
-                
-            case 5: // wy_dot equation
-                h_colvals[nnz_count++] = (base_col_offset + 4) * n_total + (base_col_offset + 6); // H[wx,wz]
-                h_colvals[nnz_count++] = (base_col_offset + 6) * n_total + (base_col_offset + 4); // H[wz,wx]
-                break;
-                
-            case 6: // wz_dot equation
-                h_colvals[nnz_count++] = (base_col_offset + 4) * n_total + (base_col_offset + 5); // H[wx,wy]
-                h_colvals[nnz_count++] = (base_col_offset + 5) * n_total + (base_col_offset + 4); // H[wy,wx]
-                break;
-        }
-    }
+//     // Initialize CVODES sensitivity analysis
+//     int retval = CVodeSensInit(cvode_mem, Ns, CV_SIMULTANEOUS, 
+//                               sensitivityRHS, yS);
+//     if (retval != CV_SUCCESS) {
+//         std::cerr << "Error initializing sensitivity analysis: " << retval << std::endl;
+//         return retval;
+//     }
     
-    h_rowptrs[n_total] = nnz_count;
+//     // Set sensitivity tolerances
+//     retval = CVodeSensSStolerances(cvode_mem, 1e-6, 1e-8);
+//     if (retval != CV_SUCCESS) {
+//         std::cerr << "Error setting sensitivity tolerances: " << retval << std::endl;
+//         return retval;
+//     }
     
-    // Verify we have the right number of non-zeros
-    if (nnz_count != total_hess_nnz) {
-        std::cerr << "Error: Expected " << total_hess_nnz << " Hessian non-zeros, got " << nnz_count << std::endl;
-        exit(1);
-    }
+//     // Enable sensitivity error control
+//     retval = CVodeSetSensErrCon(cvode_mem, SUNTRUE);
+//     if (retval != CV_SUCCESS) {
+//         std::cerr << "Error enabling sensitivity error control: " << retval << std::endl;
+//         return retval;
+//     }
     
-    // Copy to device
-    sunindextype* d_rowptrs = SUNMatrix_cuSparse_IndexPointers(Hes);
-    sunindextype* d_colvals = SUNMatrix_cuSparse_IndexValues(Hes);
-    
-    CUDA_CHECK(cudaMemcpy(d_rowptrs, h_rowptrs.data(),
-                         (n_total + 1) * sizeof(sunindextype), 
-                         cudaMemcpyHostToDevice));
-    
-    CUDA_CHECK(cudaMemcpy(d_colvals, h_colvals.data(),
-                         total_hess_nnz * sizeof(sunindextype),
-                         cudaMemcpyHostToDevice));
-    
-    // Set fixed pattern
-    SUNMatrix_cuSparse_SetFixedPattern(Hes, SUNTRUE);
-}
+//     return 0;
+// }
+
 
 
 void DynamicsIntegrator::setInitialConditions(const std::vector<StateParams>& initial_states, 
@@ -602,6 +533,37 @@ int DynamicsIntegrator::jacobianFunction(sunrealtype t, N_Vector y, N_Vector fy,
     }    
     return 0;
 }
+
+// // Static sensitivity RHS function
+// int DynamicsIntegrator::sensitivityRHS(int Ns, sunrealtype t, N_Vector y, N_Vector ydot,
+//                                       N_Vector* yS, N_Vector* ySdot, void* user_data,
+//                                       N_Vector tmp1, N_Vector tmp2) {
+    
+//     DynamicsIntegrator* integrator = static_cast<DynamicsIntegrator*>(user_data);
+    
+//     sunrealtype* y_data = N_VGetDeviceArrayPointer_Cuda(y);
+    
+//     // Launch kernel for each parameter
+//     int blockSize = 128;
+//     int gridSize = (n_stp + blockSize - 1) / blockSize;
+    
+//     for (int is = 0; is < Ns; is++) {
+//         sunrealtype* yS_data = N_VGetDeviceArrayPointer_Cuda(yS[is]);
+//         sunrealtype* ySdot_data = N_VGetDeviceArrayPointer_Cuda(ySdot[is]);
+        
+//         sensitivityRHS<<<gridSize, blockSize>>>(
+//             integrator->n_total, Ns, y_data, yS_data, ySdot_data, is);
+        
+//         cudaError_t err = cudaGetLastError();
+//         if (err != cudaSuccess) {
+//             std::cerr << "Sensitivity RHS kernel error for parameter " << is 
+//                       << ": " << cudaGetErrorString(err) << std::endl;
+//             return -1;
+//         }
+//     }
+    
+//     return 0;
+// }
 
 int DynamicsIntegrator::solve(const std::vector<StateParams>& initial_states, 
                                        const std::vector<TorqueParams>& torque_params,
@@ -731,83 +693,42 @@ std::vector<sunrealtype> DynamicsIntegrator::getQuaternionNorms() {
 }
 
 
-std::tuple<std::vector<sunrealtype>, std::vector<sunindextype>, std::vector<sunindextype>> 
-DynamicsIntegrator::getJacobian() {    
+// std::tuple<std::vector<sunrealtype>, std::vector<sunindextype>, std::vector<sunindextype>> 
+// DynamicsIntegrator::getJacobian() {    
     
-    // Compute fresh Jacobian at current state
-    N_Vector tmp1 = N_VClone(y);
-    N_Vector tmp2 = N_VClone(y);  
-    N_Vector tmp3 = N_VClone(y);
+//     // Compute fresh Jacobian at current state
+//     N_Vector tmp1 = N_VClone(y);
+//     N_Vector tmp2 = N_VClone(y);  
+//     N_Vector tmp3 = N_VClone(y);
     
-    int retval = jacobianFunction(0.0, y, nullptr, Jac, this, tmp1, tmp2, tmp3);
+//     int retval = jacobianFunction(0.0, y, nullptr, Jac, this, tmp1, tmp2, tmp3);
     
-    N_VDestroy(tmp1);
-    N_VDestroy(tmp2);
-    N_VDestroy(tmp3);
+//     N_VDestroy(tmp1);
+//     N_VDestroy(tmp2);
+//     N_VDestroy(tmp3);
     
-    if (retval != 0) {
-        std::cerr << "Error computing Jacobian" << std::endl;
-        return {};
-    }
+//     if (retval != 0) {
+//         std::cerr << "Error computing Jacobian" << std::endl;
+//         return {};
+//     }
     
-    // Get pointers to GPU data
-    sunrealtype* d_data = SUNMatrix_cuSparse_Data(Jac);
-    sunindextype* d_rowptrs = SUNMatrix_cuSparse_IndexPointers(Jac);
-    sunindextype* d_colvals = SUNMatrix_cuSparse_IndexValues(Jac);
+//     // Get pointers to GPU data
+//     sunrealtype* d_data = SUNMatrix_cuSparse_Data(Jac);
+//     sunindextype* d_rowptrs = SUNMatrix_cuSparse_IndexPointers(Jac);
+//     sunindextype* d_colvals = SUNMatrix_cuSparse_IndexValues(Jac);
         
-    // Allocate host memory
-    std::vector<sunrealtype> values(TOTAL_NNZ);
-    std::vector<sunindextype> row_ptrs(N_TOTAL_STATES + 1);
-    std::vector<sunindextype> col_vals(TOTAL_NNZ);
+//     // Allocate host memory
+//     std::vector<sunrealtype> values(TOTAL_NNZ);
+//     std::vector<sunindextype> row_ptrs(N_TOTAL_STATES + 1);
+//     std::vector<sunindextype> col_vals(TOTAL_NNZ);
     
-    // Single batch of GPU->CPU transfers
-    cudaMemcpy(values.data(), d_data, TOTAL_NNZ * sizeof(sunrealtype), cudaMemcpyDeviceToHost);
-    cudaMemcpy(row_ptrs.data(), d_rowptrs, (N_TOTAL_STATES + 1) * sizeof(sunindextype), cudaMemcpyDeviceToHost);
-    cudaMemcpy(col_vals.data(), d_colvals, TOTAL_NNZ * sizeof(sunindextype), cudaMemcpyDeviceToHost);
+//     // Single batch of GPU->CPU transfers
+//     cudaMemcpy(values.data(), d_data, TOTAL_NNZ * sizeof(sunrealtype), cudaMemcpyDeviceToHost);
+//     cudaMemcpy(row_ptrs.data(), d_rowptrs, (N_TOTAL_STATES + 1) * sizeof(sunindextype), cudaMemcpyDeviceToHost);
+//     cudaMemcpy(col_vals.data(), d_colvals, TOTAL_NNZ * sizeof(sunindextype), cudaMemcpyDeviceToHost);
     
-    return std::make_tuple(std::move(values), std::move(row_ptrs), std::move(col_vals));
-}
-
-std::tuple<std::vector<sunrealtype>, std::vector<sunindextype>, std::vector<sunindextype>> 
-DynamicsIntegrator::getHessian() {
-    
-    // Get device state data
-    sunrealtype* d_y = N_VGetDeviceArrayPointer_Cuda(y);
-    sunrealtype* d_hess_data = SUNMatrix_cuSparse_Data(Hes);
-    
-    // Launch kernel: one thread per system, one block dimension per equation
-    dim3 blockSize(32, 7);  // 32 systems, 7 equations
-    dim3 gridSize((n_stp + blockSize.x - 1) / blockSize.x, 1);
-    
-    sparseHessian<<<gridSize, blockSize>>>(n_stp, d_hess_data, d_y);
-    
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        std::cerr << "Full Hessian kernel error: " << cudaGetErrorString(err) << std::endl;
-        return {};
-    }
-    
-    CUDA_CHECK(cudaDeviceSynchronize());
-    
-    // Get pointers to GPU data
-    sunindextype* d_rowptrs = SUNMatrix_cuSparse_IndexPointers(Hes);
-    sunindextype* d_colvals = SUNMatrix_cuSparse_IndexValues(Hes);
-        
-    // Allocate host memory and copy from device
-    std::vector<sunrealtype> values(TOTAL_HESSIAN_NNZ);
-    std::vector<sunindextype> row_ptrs(n_total + 1);
-    std::vector<sunindextype> col_vals(TOTAL_HESSIAN_NNZ);
-    
-    CUDA_CHECK(cudaMemcpy(values.data(), d_hess_data, TOTAL_HESSIAN_NNZ * sizeof(sunrealtype), 
-                         cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(row_ptrs.data(), d_rowptrs, (n_total + 1) * sizeof(sunindextype), 
-                         cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(col_vals.data(), d_colvals, TOTAL_HESSIAN_NNZ * sizeof(sunindextype), 
-                         cudaMemcpyDeviceToHost));
-    
-    return std::make_tuple(std::move(values), std::move(row_ptrs), std::move(col_vals));
-}
-
+//     return std::make_tuple(std::move(values), std::move(row_ptrs), std::move(col_vals));
+// }
 
 void DynamicsIntegrator::printSolutionStats() {
     long int nsteps, nfevals, nlinsetups;

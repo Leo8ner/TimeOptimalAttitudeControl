@@ -2,14 +2,14 @@
 
 using namespace casadi;
 
-CUDAOptimizer::CUDAOptimizer(const Function& dyn, const Constraints& cons) :
+Optimizer::Optimizer(const Function& dyn, const Constraints& cons) :
         lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt),
         X_0(cons.X_0), X_f(cons.X_f), F(dyn) {
         
         setupOptimizationProblem();
 }
     
-void CUDAOptimizer::setupOptimizationProblem() {
+void Optimizer::setupOptimizationProblem() {
     // Decision variables (same as your original)
     X = opti.variable(n_states, n_stp + 1);
     U = opti.variable(n_controls, n_stp);

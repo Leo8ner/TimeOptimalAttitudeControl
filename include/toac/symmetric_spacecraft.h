@@ -15,7 +15,7 @@ inline constexpr float wy_0{0.0f};             // Initial pitch rate------------
 inline constexpr float wz_0{0.0f};             // Initial yaw rate----------------, rad/s
 
 // Final values
-inline constexpr float phi_f{90.0f * DEG};     // Final roll angle----------------, rad
+inline constexpr float phi_f{180.0f * DEG};     // Final roll angle----------------, rad
 inline constexpr float theta_f{0.0f};          // Final pitch angle---------------, rad
 inline constexpr float psi_f{0.0f};            // Final yaw angle-----------------, rad
 inline constexpr float wx_f{0.0f};             // Final roll rate-----------------, rad/s
@@ -23,10 +23,11 @@ inline constexpr float wy_f{0.0f};             // Final pitch rate--------------
 inline constexpr float wz_f{0.0f};             // Final yaw rate------------------, rad/s
 
 // SIM parameters
-inline constexpr float T_0{2.4f};              // Time horizon initial guess------, s
-inline constexpr int n_stp{25};                // Number of time steps------------, -
+constexpr float n_step_temp{phi_f/(90.0f*DEG)*25};       // Number of steps calculator------, -
+inline constexpr float T_0{3.2f};              // Time horizon initial guess------, s
+inline constexpr int n_stp{(int)n_step_temp}; // Number of time steps------------, -
 inline constexpr float dt_0{T_0/n_stp};        // Time step initial guess---------, s
-inline constexpr float dt_min{0.00001f};       // Minimum time step---------------, s
+inline constexpr float dt_min{0.0f};       // Minimum time step---------------, s
 inline constexpr float dt_max{1.0f};           // Maximum time step---------------, s
 inline constexpr int n_states{7};              // Number of states----------------, -
 inline constexpr int n_controls{3};            // Number of controls--------------, -

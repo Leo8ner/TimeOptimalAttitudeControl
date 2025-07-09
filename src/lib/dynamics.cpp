@@ -72,12 +72,14 @@ ImplicitDynamics::ImplicitDynamics(const std::string& plugin) {
         F = f.map(n_stp, "unroll");
 
     } else if (plugin == "fatrop") {
-        opts["collocation_scheme"] = "radau";
-        opts["interpolation_order"] = 4;
+        // opts["collocation_scheme"] = "radau";
+        // opts["interpolation_order"] = 4;
         opts["simplify"] = true;
-        opts["rootfinder"] = "fast_newton";
-        Function f = integrator("f", "collocation", dae, opts);
-        F = f;
+        // opts["rootfinder"] = "fast_newton";
+        // Function f = integrator("f", "rk", dae, opts);
+        SX X_next = rk4(X_dot, X, dt);
+        F = Function("F", {X, U, dt}, {X_next});
+        //F = f;
     } else {
         throw std::invalid_argument("Unsupported solver type: " + plugin);
     }

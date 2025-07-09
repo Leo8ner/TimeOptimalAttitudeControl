@@ -2,38 +2,45 @@
 #include <string>
 #include <filesystem>
 #include <casadi/casadi.hpp>
-#include <toac/dynamics.h>
 #include <toac/casadi_callback.h>
+#include <toac/constraints.h>
+#include <toac/optimizer.h>
 
-namespace fs = std::filesystem;
-
+using namespace casadi;
 
 int main(){
 
     // Dynamics
     //Dynamics dyn; // Create an instance of the Dynamics class
-    CUDACallback dyn("integrator"); // Create an instance of the dynamics class
+    // create_dynamics(true); // Create an instance of the dynamics class
+    // Function dyn = get_dynamics(); // Get the dynamics function
+    Function dyn = DynamicsCallback("F", true);
+    // Constraints
+    Constraints cons; // Create an instance of the Constraints class
 
+    // Solver
+    std::string plugin = "fatrop"; // Specify the solver plugin to use
+    Optimizer opti(dyn, cons, plugin);     // Create an instance of the
     // options for c-code auto generation
-    casadi::Dict opts = casadi::Dict();
+    Dict opts = Dict();
     opts["cpp"] = false;
     opts["with_header"] = true;
     // prefix for c code
-    std::string prefix_code = fs::current_path().parent_path().string() + "/code_gen/";
+    std::string prefix_code = std::filesystem::current_path().parent_path().string() + "/code_gen/";
 
     // generate dynamics in c code
-    casadi::CodeGenerator myCodeGen = casadi::CodeGenerator("integrator.c", opts);
-    myCodeGen.add(dyn.get_function());
-    myCodeGen.add(dyn.get_jacobian());
-    myCodeGen.add(dyn.get_hessian());
+    casadi::CodeGenerator myCodeGen = casadi::CodeGenerator("parsolver.c", opts);
+    myCodeGen.add(dyn);
+    //myCodeGen.add(dyn.get_jacobian());
+    //myCodeGen.add(dyn.get_hessian());
     myCodeGen.generate(prefix_code);
 
     // compile c code to a shared library
-    std::string prefix_lib = fs::current_path().parent_path().string() + "/build/";
+    std::string prefix_lib = std::filesystem::current_path().parent_path().string() + "/build/";
     std::string compile_command = "gcc -fPIC -shared -O3 " + 
-        prefix_code + "integrator.c -o " +
-        prefix_lib + "lib_integrator.so " +
-        "-lipopt";
+        prefix_code + "parsolver.c -o " +
+        prefix_lib + "lib_parsolver.so " +
+        "-lipopt -lfatrop ";
     std::cout << compile_command << std::endl;
 
     int compile_flag = std::system(compile_command.c_str());

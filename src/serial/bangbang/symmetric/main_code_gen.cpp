@@ -34,9 +34,15 @@ int main() {
     // Calculate the elapsed time
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
     // Print the elapsed time
+    float T_opt = 0.0f; // Optimal duration for the maneuver
+    if (phi_f == 90.0f * DEG) {
+        T_opt = 2.42112; // Optimal duration for 90 deg turn
+    } else if (phi_f == 180.0f * DEG){
+        T_opt = 3.2430;
+    }
     std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
-    std::cout << "Maneuver Duration: " << T << " s" << std::endl;
-    std::cout << "Optimal Duration for 90 deg turn: 2.42112 s" << std::endl;
+    std::cout << "Computed Maneuver Duration: " << T << " s" << std::endl;
+    std::cout << "Theoretical Optimal Duration: " << T_opt << std::endl;
 
 
     // Export the trajectory to a CSV file
@@ -44,6 +50,10 @@ int main() {
 
     // Plot the trajectory
     std::system("python3 ../src/lib/plot_csv_data.py trajectory.csv"); // Call the Python script to plot the data
-    
+    std::string command = "python3 ../src/lib/animation.py trajectory.csv "
+                        + std::to_string(i_x) + " " 
+                        + std::to_string(i_y) + " " 
+                        + std::to_string(i_z);
+    std::system(command.c_str()); // Call the Python script to animate the data
     return 0;
 }

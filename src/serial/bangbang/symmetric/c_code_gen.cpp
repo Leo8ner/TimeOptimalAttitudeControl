@@ -13,6 +13,7 @@ namespace fs = std::filesystem;
 int main(){
 
     std::string plugin = "fatrop"; // Specify the solver plugin to use
+    bool fixed_step = true; // Use fixed step size for the integrator
     // Dynamics
     //Dynamics dyn; // Create an instance of the Dynamics class
     ImplicitDynamics dyn(plugin); // Create an instance of the DynCvodes class
@@ -20,10 +21,10 @@ int main(){
     Constraints cons; // Create an instance of the Constraints class
 
     // Solver
-    Optimizer opti(dyn.F, cons, plugin);     // Create an instance of the Optimizer class
+    Optimizer opti(dyn.F, cons, plugin, fixed_step);     // Create an instance of the Optimizer class
 
     // options for c-code auto generation
-    casadi::Dict opts = casadi::Dict();
+    Dict opts = Dict();
     opts["cpp"] = false;
     opts["with_header"] = true;
     // prefix for c code
@@ -32,8 +33,6 @@ int main(){
     // generate dynamics in c code
     casadi::CodeGenerator myCodeGen = casadi::CodeGenerator("solver.c", opts);
     myCodeGen.add(opti.solver);
-    //myCodeGen.add(dyn.jac_solver);
-    //myCodeGen.add(dyn.jac_jac_solver);
     myCodeGen.generate(prefix_code);
 
     // compile c code to a shared library

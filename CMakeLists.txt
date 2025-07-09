@@ -9,12 +9,20 @@ SET(CMAKE_EXE_LINKER_FLAGS
 
 # for using casadi
 find_package(casadi REQUIRED)
-message(STATUS "CasADi found at: ${casadi_DIR}")
+if (NOT casadi_FOUND)
+    message(FATAL_ERROR "CasADi not found. Please install CasADi or set CASADI_DIR.")
+else()
+    message(STATUS "CasADi version: ${casadi_VERSION}")
+endif()
 # For multi threading
 find_package(Threads REQUIRED)
 # For integration
 find_package(SUNDIALS REQUIRED)
-
+if (NOT SUNDIALS_FOUND)
+    message(FATAL_ERROR "SUNDIALS not found. Please install SUNDIALS or set SUNDIALS_DIR.")
+else()
+    message(STATUS "SUNDIALS version: ${SUNDIALS_VERSION}")
+endif()
 # For GPU acceleration
 find_package(CUDAToolkit REQUIRED)
 enable_language(CUDA)
@@ -63,24 +71,100 @@ else()
     message(FATAL_ERROR "Ipopt library not found. Please set IPOPT_LIBRARY.")
 endif()
 
-
 # find the following packages
 find_package(Threads REQUIRED)
 
-add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp) 
-# add_library(toac STATIC src/lib/optimizer.cpp src/lib/dynamics.cpp src/lib/constraints.cpp src/lib/plots.cpp src/lib/CUDAdynamics.cu) 
+# SUNDIALS Configuration
+set(SUNDIALS_INCLUDE_DIR /usr/local/sundials-single/include)
+set(SUNDIALS_LIBRARIES_DIR /usr/local/sundials-single/lib)
 
-target_include_directories(
-    toac PUBLIC ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac
+# Find all required SUNDIALS libraries
+find_library(SUNDIALS_CVODES_LIBRARY
+    NAMES sundials_cvodes
+    HINTS ${SUNDIALS_LIBRARIES_DIR} /usr/local/lib /usr/lib /opt/lib
 )
+
+find_library(SUNDIALS_NVECCUDA_LIBRARY
+    NAMES sundials_nveccuda
+    HINTS ${SUNDIALS_LIBRARIES_DIR} /usr/local/lib /usr/lib /opt/lib
+)
+
+find_library(SUNDIALS_SUNMATRIXCUSPARSE_LIBRARY
+    NAMES sundials_sunmatrixcusparse
+    HINTS ${SUNDIALS_LIBRARIES_DIR} /usr/local/lib /usr/lib /opt/lib
+)
+
+find_library(SUNDIALS_SUNLINSOLCUSOLVERSP_LIBRARY
+    NAMES sundials_sunlinsolcusolversp
+    HINTS ${SUNDIALS_LIBRARIES_DIR} /usr/local/lib /usr/lib /opt/lib
+)
+
+find_library(SUNDIALS_GENERIC_LIBRARY
+    NAMES sundials_generic
+    HINTS ${SUNDIALS_LIBRARIES_DIR} /usr/local/lib /usr/lib /opt/lib
+)
+
+# Check if all libraries were found
+if(SUNDIALS_CVODES_LIBRARY AND SUNDIALS_NVECCUDA_LIBRARY AND 
+   SUNDIALS_SUNMATRIXCUSPARSE_LIBRARY AND SUNDIALS_SUNLINSOLCUSOLVERSP_LIBRARY AND
+   SUNDIALS_GENERIC_LIBRARY)
+    set(SUNDIALS_LIBRARIES 
+        ${SUNDIALS_CVODES_LIBRARY}
+        ${SUNDIALS_NVECCUDA_LIBRARY}
+        ${SUNDIALS_SUNMATRIXCUSPARSE_LIBRARY}
+        ${SUNDIALS_SUNLINSOLCUSOLVERSP_LIBRARY}
+        ${SUNDIALS_GENERIC_LIBRARY}
+    )
+    message(STATUS "All SUNDIALS libraries found:")
+    message(STATUS "  CVODES: ${SUNDIALS_CVODES_LIBRARY}")
+    message(STATUS "  NVECCUDA: ${SUNDIALS_NVECCUDA_LIBRARY}")
+    message(STATUS "  SUNMATRIXCUSPARSE: ${SUNDIALS_SUNMATRIXCUSPARSE_LIBRARY}")
+    message(STATUS "  SUNLINSOLCUSOLVERSP: ${SUNDIALS_SUNLINSOLCUSOLVERSP_LIBRARY}")
+    message(STATUS "  GENERIC: ${SUNDIALS_GENERIC_LIBRARY}")
+else()
+    message(FATAL_ERROR "Some SUNDIALS libraries not found. Please check SUNDIALS installation.")
+endif()
+
+# Create the library
+add_library(toac STATIC 
+            src/lib/optimizer.cpp 
+            src/lib/dynamics.cpp 
+            src/lib/constraints.cpp 
+            src/lib/plots.cpp 
+            src/lib/CUDAdynamics.cu 
+            src/lib/CustomCallback.cpp
+) 
+
+# Set CUDA properties
+set_property(TARGET toac PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+
+# CORRECT: Set include directories for toac (header paths only)
+target_include_directories(toac PUBLIC 
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/toac
+    ${SUNDIALS_INCLUDE_DIR}
+    ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+# CORRECT: Link libraries to toac
+target_link_libraries(toac PUBLIC
+    ${CASADI_LIBRARIES}
+    ${SUNDIALS_LIBRARIES}
+    CUDA::cudart
+    CUDA::cusparse
+    CUDA::cusolver
+)
+
 # include header directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/toac
     SYSTEM ${IPOPT_INCLUDE_DIRS}
     SYSTEM ${CASADI_INCLUDE_DIR}
+    SYSTEM ${SUNDIALS_INCLUDE_DIR}
     ${CODE_GEN_INCLUDE_DIR}
-    ${CUDAToolkit_INCLUDE_DIRS})
+    ${CUDAToolkit_INCLUDE_DIRS}
+)
 
 # find all the header files
 file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
@@ -88,40 +172,59 @@ file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
 
 add_executable(GenerateCode src/serial/bangbang/symmetric/c_code_gen.cpp)
-# add_executable(GenerateCUDACode src/parallel/bangbang/symmetric/c_code_gen.cpp)
 
-# Link the executable to the CasADi library
-target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} ${IPOPT_LIBRARIES} toac)
-target_include_directories(GenerateCode PRIVATE ${CASADI_INCLUDE_DIRS} ${IPOPT_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+# Link the executable to the libraries
+target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} ${IPOPT_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
+target_include_directories(GenerateCode PRIVATE ${CASADI_INCLUDE_DIR} ${IPOPT_INCLUDE_DIRS} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 add_executable(SerialBangbangSymmetric src/serial/bangbang/symmetric/main.cpp)
 
-# Link the executable to the CasADi library
-target_link_libraries(SerialBangbangSymmetric PRIVATE ${CASADI_LIBRARIES} toac)
-target_include_directories(SerialBangbangSymmetric PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+# Link the executable to the libraries
+target_link_libraries(SerialBangbangSymmetric PRIVATE ${CASADI_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
+target_include_directories(SerialBangbangSymmetric PRIVATE ${CASADI_INCLUDE_DIR} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 add_executable(SerialBangbangSymmetricCodeGen src/serial/bangbang/symmetric/main_code_gen.cpp)
 
-# Link the executable to the CasADi library
-target_link_libraries(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_LIBRARIES} toac)
-target_include_directories(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+# Link the executable to the libraries
+target_link_libraries(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
+target_include_directories(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLUDE_DIR} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-# add_executable(ParallelBangbangSymmetric src/parallel/bangbang/symmetric/main.cpp)
-# target_link_libraries(ParallelBangbangSymmetric PRIVATE
-#     ${CASADI_LIBRARIES}
-#     SUNDIALS::cvode
-#     SUNDIALS::nveccuda  
-#     CUDA::cudart
-#     CUDA::cusparse
-#     toac
-# )
-
-# set_property(TARGET ParallelBangbangSymmetric PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+# Uncomment and fix the parallel version when needed
+add_executable(ParGenerateCode src/parallel/bangbang/symmetric/c_code_gen.cpp)
+target_link_libraries(ParGenerateCode PRIVATE
+    ${CASADI_LIBRARIES}
+    ${SUNDIALS_LIBRARIES}
+    CUDA::cudart
+    CUDA::cusparse
+    CUDA::cusolver
+    toac
+)
 
 # Runs GenerateCode automatically after build
-add_custom_target(run_codegen
+add_custom_target(run_codegen_serial
     COMMAND GenerateCode
-    DEPENDS GenerateCode
+    DEPENDS toac GenerateCode
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Running GenerateCode automatically after build"
+)
+
+add_custom_target(serial 
+    COMMAND SerialBangbangSymmetricCodeGen
+    DEPENDS SerialBangbangSymmetricCodeGen run_codegen_serial
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running SerialBangbangSymmetricCodeGen automatically after build"
+)
+
+add_custom_target(run_codegen_parallel
+    COMMAND ParGenerateCode
+    DEPENDS toac ParGenerateCode
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running ParGenerateCode automatically after build"
+)
+
+add_custom_target(parallel 
+    COMMAND ParallelBangbangSymmetricCodeGen
+    DEPENDS run_codegen_parallel ParallelBangbangSymmetricCodeGen
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running SerialBangbangSymmetricCodeGen automatically after build"
 )

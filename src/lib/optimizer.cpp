@@ -11,7 +11,8 @@ Function get_solver() {
         return external("solver", lib_full_name);
 }
 
-Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::string& plugin) :
+Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::string& plugin, 
+                     bool fixed_step) :
     F(dyn), lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt),
     X_0(cons.X_0), X_f(cons.X_f) {
 
@@ -30,42 +31,37 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         // Reconstruct matrices for function interface compatibility
         X = MX::zeros(n_states, n_stp + 1);
         U = MX::zeros(n_controls, n_stp);
+        T = MX::zeros(1);
         dt = MX::zeros(n_stp);
-
-        // Define structure arrays for Fatrop
-        std::vector<int> nx(n_stp + 1, n_states);
-        std::vector<int> nu(n_stp + 1, 0);
-        std::vector<int> ng(n_stp + 1, 0);
-        
-        for (int k = 0; k < n_stp; ++k) {
-            nu[k] = n_controls + 1;  // controls + dt
-            ng[k] = 1 + (n_controls) + 1;  // quat_norm + control bounds + time step bound
-        }
-        nu[n_stp] = 0;
-        ng[0] += n_states - 1;  // Initial state constraints
-        ng[n_stp] = n_states;   // Final quat_norm + final state constraints
         
         // Create variables.
         std::vector<MX> x(n_stp + 1);
-        std::vector<MX> u(n_stp + 1);
-        
-        for (int k = 0; k <= n_stp; ++k) {
-            x[k] = opti.variable(nx[k]);
-            u[k] = opti.variable(nu[k]);
-        }
+        std::vector<MX> u(n_stp);
+        std::vector<MX> delta_t(n_stp + 1);
         
         for (int k = 0; k < n_stp; ++k) {
+            x[k] = opti.variable(n_states);
+            delta_t[k] = opti.variable();
+            u[k] = opti.variable(n_controls);
+        }
+        x[n_stp] = opti.variable(n_states);  // Final state variable
+        delta_t[n_stp] = opti.variable();  // Final time step variable
+
+        for (int k = 0; k < n_stp; ++k) {
             X(all, k) = x[k];
-            U(all, k) = u[k](Slice(0, n_controls));
-            dt(k) = u[k](n_controls);
+            U(all, k) = u[k];
+            dt(k) = delta_t[k];
         }
         X(all, n_stp) = x[n_stp];
 
         for (int k = 0; k < n_stp; ++k) {
             // Dynamics
-            MX X_kp1 = F(MXDict{{"x0", x[k]}, {"u", u[k](Slice(0, n_controls))}, {"p", u[k](n_controls)}}).at("xf");
+            //MX X_kp1 = F(MXDict{{"x0", x[k]}, {"u", u[k](Slice(0, n_controls))}, {"p", u[k](n_controls)}}).at("xf");
+            MX X_kp1 = F({x[k],u[k],delta_t[k]})[0];
             opti.subject_to(x[k+1] == X_kp1);  // State at next time step
-            
+            if (fixed_step) {
+                opti.subject_to(delta_t[k+1] == delta_t[k]);  // Fixed time step
+            }
             // Path constraints
             if (k == 0) {
                 opti.subject_to(x[k] == p_X0);  // Initial state
@@ -73,42 +69,36 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
                 opti.subject_to(sum1(pow(x[k](Slice(0,4)), 2)) == 1);  // Quaternion norm
             }
             opti.subject_to(lb_U <= u[k](Slice(0, n_controls)) <= ub_U);  // Control upper bounds
-            opti.subject_to(0 <= u[k](n_controls));  // dt > 0
+            opti.subject_to(0 < delta_t[k] );  // dt > 0
         }
         
         // Final time step path constraints
         opti.subject_to(x[n_stp] == p_Xf);  // Final state
         
         // Objective function
-        T = MX::zeros(1);
         for (int k = 0; k < n_stp; ++k) {
-            T += u[k](n_controls);
+            T += delta_t[k];
         }
         
-        for (int k = 0; k <= n_stp; ++k) {
+        // Initial guesses
+        for (int k = 0; k < n_stp; ++k) {
             opti.set_initial(x[k], X_guess(all, k));
-            if (k < n_stp) {
-                DM u_init = DM::zeros(n_controls + 1);
-                u_init(Slice(0, n_controls)) = U_guess(all, k);
-                u_init(n_controls) = dt_0;
-                opti.set_initial(u[k], u_init);
-            }
+            opti.set_initial(delta_t[k], dt_0);  
+            opti.set_initial(u[k], U_guess(all, k));
         }
+        opti.set_initial(x[n_stp], X_guess(all, n_stp));
         
         // Solver configuration
         plugin_opts = {
-            {"expand", false},
+            {"expand", true},
             {"structure_detection", "auto"},
-            //{"nx", nx},
-            //{"nu", nu}, 
-            //{"ng", ng},
-            //{"N", n_stp},
             {"debug", true}
         };
         solver_opts = {
-            {"print_level", 4},
-            //{"tol", 1e-8},              // Main tolerance
-            
+            {"print_level", 0},
+            {"tol", 1e-16},              // Main tolerance
+            {"constr_viol_tol", 1e-16}, // Constraint violation tolerance
+            {"mu_init", 1e-1},           // Larger initial barrier parameter
         };
 
         // Set the objective function
@@ -128,23 +118,40 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         // Define variables
         X = opti.variable(n_states, n_stp + 1);
         U = opti.variable(n_controls, n_stp);
-        dt = opti.variable(n_stp);
-        T = sum(dt);  // Total time
+        if (fixed_step) {
+            T = opti.variable(1);  // Total time
+            dt = MX::repmat(T/n_stp, n_stp, 1);
+        } else {
+            dt = opti.variable(n_stp);
+            T = sum(dt);  // Total time        
+        }
 
-        
         MX X_kp1 = F(MXDict{{"x0", X(all,Slice(0, n_stp))}, {"u", U}, {"p", dt}}).at("xf");
         opti.subject_to(X(all,Slice(1, n_stp+1)) == X_kp1);
         opti.subject_to(sum1(pow(X(Slice(0,4),all), 2)) == 1);
         
         opti.subject_to(X(all,0) == p_X0);
         opti.subject_to(X(all,n_stp) == p_Xf);
-        
-        opti.subject_to(dt>0);
+
+        if (fixed_step) {
+            opti.subject_to(T > 0);  // Fixed step size
+        } else {
+            //opti.subject_to(dt >= lb_dt);
+            //opti.subject_to(dt <= ub_dt);
+            opti.subject_to(dt>0);
+        }
         opti.subject_to(opti.bounded(lb_U, U, ub_U));
         
         opti.set_initial(dt, dt_0*DM::ones(n_stp));
         opti.set_initial(X, X_guess);
         opti.set_initial(U, U_guess);
+
+        solver_opts = {
+            {"tol", 1e-10},              // Main tolerance
+            {"acceptable_tol", 1e-7},    // Acceptable tolerance
+            {"constr_viol_tol", 1e-6}, // Constraint violation tolerance
+
+        };
 
         // Set the objective function
         opti.minimize(T);
@@ -160,8 +167,6 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
     } else {
         throw std::invalid_argument("Unsupported solver type: " + plugin);
     }
-
-
 }
 
 DM stateInterpolator(const DM& x0, const DM& xf, int n_steps) {
@@ -173,17 +178,58 @@ DM stateInterpolator(const DM& x0, const DM& xf, int n_steps) {
     }
 
     int n = 4; 
-    DM q(n, n_steps);
-    Slice all;
+    DM q = quaternionSlerp(x0(Slice(0, n)), xf(Slice(0, n)), n_steps);
 
-    for (int i = 0; i < n_steps; ++i) {
-        double alpha = static_cast<double>(i) / (n_steps - 1);
-        q(all, i) = (1.0 - alpha) * x0(Slice(0, n)) + alpha * xf(Slice(0, n));
-    }
     DM omega = ratesInterpolator(x0(Slice(1, n)), xf(Slice(1, n)), n_steps);
 
     DM result = DM::vertcat({q, omega});
 
+    return result;
+}
+
+// Discretized quaternion spherical interpolation
+DM quaternionSlerp(const auto& q1, const auto& q2, int n_steps) {
+    if (n_steps <= 0) {
+        throw std::invalid_argument("n_steps must be positive");
+    }
+    if (n_steps == 1) {
+        DM result = DM::zeros(4, 1);
+        result(Slice(), 0) = q1 / sqrt(sumsqr(q1));
+        return result;
+    }
+    
+    DM result = DM::zeros(4, n_steps);
+    
+    // Normalize input quaternions
+    DM q1_norm = q1 / sqrt(sumsqr(q1));
+    DM q2_norm = q2 / sqrt(sumsqr(q2));
+    
+    // Compute dot product
+    double dot = static_cast<double>(mtimes(q1_norm.T(), q2_norm));
+    
+    // Choose shorter path
+    if (dot < 0.0) {
+        q2_norm = -q2_norm;
+        dot = -dot;
+    }
+    
+    double angle = 0.0;
+    double sin_angle = 1.0;
+    
+    
+    // Generate interpolated quaternions
+    for (int i = 0; i < n_steps; ++i) {
+        double t = static_cast<double>(i) / (n_steps - 1);
+        
+        // Initialize q_interp to avoid undefined behavior
+        DM q_interp = q1_norm;  // Safe default initialization
+        
+        // Linear interpolation with normalization
+        q_interp = (1.0 - t) * q1_norm + t * q2_norm;
+        q_interp /= sqrt(sumsqr(q_interp));
+        result(Slice(), i) = q_interp;
+    }
+    
     return result;
 }
 
