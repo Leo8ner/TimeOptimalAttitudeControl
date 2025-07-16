@@ -211,11 +211,7 @@ DM quaternionSlerp(const auto& q1, const auto& q2, int n_steps) {
     if (dot < 0.0) {
         q2_norm = -q2_norm;
         dot = -dot;
-    }
-    
-    double angle = 0.0;
-    double sin_angle = 1.0;
-    
+    }    
     
     // Generate interpolated quaternions
     for (int i = 0; i < n_steps; ++i) {

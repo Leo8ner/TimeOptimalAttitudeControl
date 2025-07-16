@@ -1,19 +1,36 @@
 #pragma once
 
+//==============================================================================
+// DYNAMICS INTEGRATOR HEADER
+//==============================================================================
+// This header defines a CUDA-accelerated dynamics integrator for batch 
+// processing of spacecraft attitude dynamics using SUNDIALS CVODES with 
+// sensitivity analysis capabilities.
+//==============================================================================
+
+//==============================================================================
+// SYSTEM INCLUDES
+//==============================================================================
 #include <iostream>
 #include <vector>
 #include <cmath>
 #include <string>
-#include <cuda_runtime.h>
-#include <cusparse.h>
-#include <cusolverSp.h>
 #include <chrono>
 #include <iomanip>
 #include <numeric>
 #include <algorithm>
 #include <cassert>
 
-// SUNDIALS headers
+//==============================================================================
+// CUDA INCLUDES
+//==============================================================================
+#include <cuda_runtime.h>
+#include <cusparse.h>
+#include <cusolverSp.h>
+
+//==============================================================================
+// SUNDIALS INCLUDES
+//==============================================================================
 #include <sundials/sundials_types.h>
 #include <sundials/sundials_math.h>
 #include <sundials/sundials_context.h>
@@ -22,21 +39,42 @@
 #include <sunmatrix/sunmatrix_cusparse.h>
 #include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
 
-// Personal headers
-#include <toac/symmetric_spacecraft.h>
+//==============================================================================
+// PROJECT INCLUDES
+//==============================================================================
+#include <symmetric_spacecraft.h>
 
-// Define constants for batch processing
-#define N_TOTAL_STATES (n_states * n_stp)
+//==============================================================================
+// NAMESPACE USAGE
+//==============================================================================
+using namespace std;
 
-// Sparsity constants
-#define NNZ_PER_BLOCK 37  // 4*6 + 3*2 = 24 + 6 + 7 diagonal = 37 nonzeros per block
+//==============================================================================
+// CONSTANTS AND MACROS
+//==============================================================================
 
-// Error checking macro
+// Batch processing constants
+inline constexpr int N_TOTAL_STATES = (n_states * n_stp);
+
+// Sparsity pattern constants
+inline constexpr int NNZ_PER_BLOCK = 37;  // Nonzeros per block: 4*6 + 3*2 + 7 diagonal = 37
+
+// Default parameters for integration
+inline constexpr sunrealtype DEFAULT_RTOL = 1e-8;
+inline constexpr sunrealtype DEFAULT_ATOL = 1e-10;
+inline constexpr sunrealtype SENSITIVITY_ATOL = 1e-12;
+inline constexpr sunrealtype SENSITIVITY_RTOL = 1e-10;
+inline constexpr int MAX_CVODE_STEPS = 100000;
+
+//------------------------------------------------------------------------------
+// Error checking macros
+//------------------------------------------------------------------------------
 #define CUDA_CHECK(call) \
     do { \
         cudaError_t err = call; \
         if (err != cudaSuccess) { \
-            std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << " - " << cudaGetErrorString(err) << std::endl; \
+            cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ \
+                      << " - " << cudaGetErrorString(err) << endl; \
             exit(1); \
         } \
     } while(0)
@@ -45,142 +83,287 @@
     do { \
         cudaError_t err = cudaGetLastError(); \
         if (err != cudaSuccess) { \
-            std::cerr << "CUDA kernel error: " << cudaGetErrorString(err) \
-                    << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+            cerr << "CUDA kernel error: " << cudaGetErrorString(err) \
+                      << " at " << __FILE__ << ":" << __LINE__ << endl; \
             return -1; \
         } \
-} while(0)
+    } while(0)
 
 #define SUNDIALS_CHECK(call, msg) \
     do { \
         auto retval = call; \
         if (retval != CV_SUCCESS) { \
-            std::cerr << msg << ": " << retval \
-                    << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+            cerr << msg << ": " << retval \
+                      << " at " << __FILE__ << ":" << __LINE__ << endl; \
             return retval; \
         } \
-} while(0)
+    } while(0)
 
-// Torque parameters structure
-struct TorqueParams {
-    // Control inputs
-    sunrealtype tau_x, tau_y, tau_z;
+//==============================================================================
+// CUDA KERNEL DECLARATIONS
+//==============================================================================
 
-};
-
-// State parameters structure
-struct StateParams {
-    // Initial state inputs
-    sunrealtype q0, q1, q2, q3; // Quaternion components
-    sunrealtype wx, wy, wz;     // Angular velocities
-
-};
-
-// Timing utility class
-class PrecisionTimer {
-private:
-    std::chrono::high_resolution_clock::time_point start_time;
-    
-public:
-    void start() {
-        start_time = std::chrono::high_resolution_clock::now();
-    }
-    
-    double getElapsedMs() {
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-        return duration.count() / 1000.0;
-    }
-};
-
-// Forward declaration for CUDA kernels
+/**
+ * @brief CUDA kernel for computing dynamics right-hand side
+ * @param n_total Total number of states across all integration steps
+ * @param y State vector
+ * @param ydot Time derivative of state vector
+ */
 __global__ void dynamicsRHS(int n_total, sunrealtype* y, sunrealtype* ydot);
+
+/**
+ * @brief CUDA kernel for computing sparse Jacobian matrix
+ * @param n_blocks Number of blocks in the batch
+ * @param block_data Jacobian matrix data in block format
+ * @param y State vector
+ */
 __global__ void sparseJacobian(int n_blocks, sunrealtype* block_data, sunrealtype* y);
-__global__ void sensitivityRHS(int n_total, int Ns, sunrealtype* y, 
-                                      N_Vector* yS_array, N_Vector* ySdot_array);
 
-// Device arrays for step parameters (constant during integration)
-extern __device__ TorqueParams* d_torque_params;
-extern __device__ __constant__ sunrealtype d_inertia_constants[12];
+/**
+ * @brief CUDA kernel for computing sensitivity right-hand side
+ * @param n_total Total number of states
+ * @param Ns Number of sensitivity parameters
+ * @param y State vector
+ * @param yS_array Array of sensitivity vectors
+ * @param ySdot_array Array of sensitivity time derivatives
+ */
+__global__ void sensitivityRHS(int Ns, sunrealtype* y, sunrealtype** yS_data_array, sunrealtype** ySdot_data_array);
 
+//==============================================================================
+// MAIN INTEGRATOR CLASS
+//==============================================================================
+
+/**
+ * @brief CUDA-accelerated dynamics integrator for batch spacecraft simulation
+ * 
+ * This class provides high-performance batch integration of spacecraft attitude
+ * dynamics using SUNDIALS CVODES with CUDA acceleration. It supports:
+ * - Batch processing of multiple trajectories
+ * - Sparse Jacobian computation on GPU
+ * - Forward sensitivity analysis
+ * - Quaternion-based attitude representation
+ * 
+ * The integrator is designed for repeated use with different initial conditions
+ * and control inputs, with expensive setup operations performed only once.
+ */
 class DynamicsIntegrator {
 private:
-    SUNMatrix Jac;
-    SUNLinearSolver LS;
-    N_Vector y;
-    int n_total, nnz;
-    cusparseHandle_t cusparse_handle;
-    cusolverSpHandle_t cusolver_handle;
-    
-    TorqueParams* d_torque_params_ptr;
-    
-    void* cvode_mem;
-    SUNContext sunctx;
-    
-    // Pinned memory (only for critical transfers)
-    sunrealtype *h_y_pinned;
+    //--------------------------------------------------------------------------
+    // SUNDIALS Integration Components
+    //--------------------------------------------------------------------------
+    void* cvode_mem;                ///< CVODES memory structure
+    SUNContext sunctx;              ///< SUNDIALS context
+    SUNMatrix Jac;                  ///< Sparse Jacobian matrix
+    SUNLinearSolver LS;             ///< Linear solver
+    N_Vector y;                     ///< Solution vector
 
-    // Sensitivity analysis members
-    N_Vector* yS;                    // Sensitivity vectors
-    int Ns;                          // Number of parameters
-    bool sensitivity_enabled;
+    //--------------------------------------------------------------------------
+    // CUDA Components
+    //--------------------------------------------------------------------------
+    cusparseHandle_t cusparse_handle;   ///< cuSPARSE handle for sparse operations
+    cusolverSpHandle_t cusolver_handle; ///< cuSOLVER handle for linear algebra
+    sunrealtype* d_torque_params_ptr;  ///< Device pointer to torque parameters
     
-    // GPU memory for sensitivity computation
-    sunrealtype* d_jacobian_workspace;
-    
-    // Timing
-    PrecisionTimer timer;
-    double setup_time;
-    double solve_time;
+    //--------------------------------------------------------------------------
+    // Memory Management
+    //--------------------------------------------------------------------------
+    sunrealtype* h_y_pinned;           ///< Pinned host memory for efficient state transfers
+    sunrealtype* h_tau_pinned;         ///< Pinned host memory for efficient control transfers
 
-    // Verbose output flag
-    bool verbose = false;
+    //--------------------------------------------------------------------------
+    // Problem Dimensions
+    //--------------------------------------------------------------------------
+    int n_total;                    ///< Total number of states (n_states * n_stp)
+    int nnz;                        ///< Number of nonzeros in Jacobian
+    int n_batch;                    ///< Number of batches (integration steps)
     
-    // Private helper methods
+    //--------------------------------------------------------------------------
+    // Sensitivity Analysis
+    //--------------------------------------------------------------------------
+    N_Vector* yS;                   ///< Array of sensitivity vectors
+    int Ns;                         ///< Number of sensitivity parameters
+    bool sensitivity_enabled;       ///< Flag indicating if sensitivity is active
+    sunrealtype** d_yS_ptrs;        ///< Device array of yS vector pointers
+    sunrealtype** d_ySdot_ptrs;     ///< Device array of ySdot vector pointers
+    bool sens_was_setup;            ///< Flag indicating if sensitivity was set up
+    //--------------------------------------------------------------------------
+    // Performance Monitoring
+    //--------------------------------------------------------------------------
+    float setup_time;              ///< Time spent in setup operations
+    float solve_time;              ///< Time spent in integration
+    bool verbose;                  ///< Verbose output flag
+    
+    //--------------------------------------------------------------------------
+    // Private Helper Methods
+    //--------------------------------------------------------------------------
+    
+    /**
+     * @brief Setup the sparsity pattern for the Jacobian matrix
+     */
     void setupJacobianStructure();
-    void setInitialConditions(const std::vector<StateParams>& initial_states,
-                            const std::vector<TorqueParams>& torque_params);
     
-    // Static callback functions for SUNDIALS
-    static int rhsFunction(sunrealtype t, N_Vector y, N_Vector ydot, void* user_data);
-    static int jacobianFunction(sunrealtype t, N_Vector y, N_Vector fy, 
-                               SUNMatrix Jac, void* user_data, 
-                               N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
-    static int sensitivityRHSFunction(int Ns, sunrealtype t, N_Vector y, N_Vector ydot,
-                            N_Vector* yS, N_Vector* ySdot, void* user_data,
-                            N_Vector tmp1, N_Vector tmp2);
-    // Sensitivity methods
+    /**
+     * @brief Set initial conditions for all integration steps
+     * @param initial_states Vector of initial state parameters
+     * @param torque_params Vector of torque control parameters
+     */
+    void setInitialConditions(const vector<vector<sunrealtype>>& initial_states,
+                              const vector<vector<sunrealtype>>& torque_params);
+    
+    /**
+     * @brief Setup sensitivity analysis vectors and parameters
+     * @return Success/failure code
+     */
     int setupSensitivityAnalysis();
+    
+    /**
+     * @brief Initialize sensitivity vectors with appropriate values
+     */
     void initializeSensitivityVectors();
-
-    // Validation functions
-    bool validateInputs(const std::vector<StateParams>& initial_states, 
-                       const std::vector<TorqueParams>& torque_params);
+    
+    /**
+     * @brief Update sensitivity vector pointers on the device
+     * 
+     * This is called after sensitivity vectors are initialized or modified.
+     */
+    void initializeSensitivityPointers();
+    
+    /**
+     * @brief Print solution statistics (when verbose mode is enabled)
+     */
     void printSolutionStats();
+    
+    //--------------------------------------------------------------------------
+    // Static SUNDIALS Callback Functions
+    //--------------------------------------------------------------------------
+    
+    /**
+     * @brief Right-hand side function callback for SUNDIALS
+     * @param t Current time
+     * @param y Current state vector
+     * @param ydot Time derivative vector (output)
+     * @param user_data User-defined data pointer
+     * @return Success/failure code
+     */
+    static int rhsFunction(sunrealtype t, N_Vector y, N_Vector ydot, void* user_data);
+    
+    /**
+     * @brief Jacobian computation callback for SUNDIALS
+     * @param t Current time
+     * @param y Current state vector
+     * @param fy Current RHS vector
+     * @param Jac Jacobian matrix (output)
+     * @param user_data User-defined data pointer
+     * @param tmp1,tmp2,tmp3 Temporary vectors
+     * @return Success/failure code
+     */
+    static int jacobianFunction(sunrealtype t, N_Vector y, N_Vector fy, 
+                                SUNMatrix Jac, void* user_data, 
+                                N_Vector tmp1, N_Vector tmp2, N_Vector tmp3);
+    
+    /**
+     * @brief Sensitivity RHS function callback for SUNDIALS
+     * @param Ns Number of sensitivity parameters
+     * @param t Current time
+     * @param y Current state vector
+     * @param ydot Current RHS vector
+     * @param yS Array of sensitivity vectors
+     * @param ySdot Array of sensitivity RHS vectors (output)
+     * @param user_data User-defined data pointer
+     * @param tmp1,tmp2 Temporary vectors
+     * @return Success/failure code
+     */
+    static int sensitivityRHSFunction(int Ns, sunrealtype t, N_Vector y, N_Vector ydot,
+                                      N_Vector* yS, N_Vector* ySdot, void* user_data,
+                                      N_Vector tmp1, N_Vector tmp2);
+
+    /**
+     * @brief Cleanup all allocated resources
+     * This is called in the destructor and on error.
+     * It releases all GPU and SUNDIALS resources.
+     */
+    void cleanup ();
 
 public:
-    // Constructor - performs one-time setup
-    DynamicsIntegrator(bool verb = false);
+    //--------------------------------------------------------------------------
+    // Constructor and Destructor
+    //--------------------------------------------------------------------------
     
-    // Destructor - cleanup
+    /**
+     * @brief Constructor - performs one-time setup operations
+     * @param verb Enable verbose output for debugging
+     */
+    explicit DynamicsIntegrator(bool enable_sensitivity = false, bool verb = false);
+    
+    /**
+     * @brief Destructor - cleanup GPU and SUNDIALS resources
+     */
     ~DynamicsIntegrator();
     
-    // Main solve function - called repeatedly
-    // initial_states: vector of n_stp initial states, each with 7 elements [q0,q1,q2,q3,wx,wy,wz]
-    // torque_params: vector of n_stp control parameters
-    // delta_t: integration time step
-    int solve(const std::vector<StateParams>& initial_states, 
-            const std::vector<TorqueParams>& torque_params,
-            const sunrealtype& delta_t, bool enable_sensitivity);
-
-
+    //--------------------------------------------------------------------------
+    // Main Interface Methods
+    //--------------------------------------------------------------------------
     
-    // Utility functions to get results
-    std::vector<StateParams> getSolution();
-    std::vector<sunrealtype> getQuaternionNorms();
-    std::vector<std::vector<StateParams>> getSensitivities();
-    // Performance metrics
-    double getSetupTime() const { return setup_time; }
-    double getSolveTime() const { return solve_time; }
-    double getTotalTime() const { return setup_time + solve_time; }
+    /**
+     * @brief Solve the batch dynamics problem
+     * 
+     * This is the main method called repeatedly with different initial conditions
+     * and control inputs. It performs the integration from t=0 to t=delta_t.
+     * 
+     * @param initial_states Vector of initial state parameters (size n_stp)
+     * @param torque_params Vector of control torque parameters (size n_stp)
+     * @param delta_t Integration time step
+     * @param enable_sensitivity Enable forward sensitivity analysis
+     * @return Success/failure code (0 for success)
+     */
+    int solve(const vector<vector<sunrealtype>>& initial_states, 
+              const vector<vector<sunrealtype>>& torque_params,
+              const sunrealtype& delta_t, 
+              bool enable_sensitivity = false);
+    
+    //--------------------------------------------------------------------------
+    // Result Access Methods
+    //--------------------------------------------------------------------------
+    
+    /**
+     * @brief Get the integrated solution states
+     * @return Vector of final state parameters
+     */
+    vector<vector<sunrealtype>> getSolution() const;
+    
+    /**
+     * @brief Get quaternion norms for validation
+     * @return Vector of quaternion norms (should be close to 1.0)
+     */
+    vector<sunrealtype> getQuaternionNorms() const;
+    
+    /**
+     * @brief Get sensitivity analysis results
+     * @return Vector of sensitivity vectors for each parameter
+     */
+    tuple<vector<sunrealtype>, vector<int>, vector<int>, int, int> 
+    getSensitivities() const;
+    
+    //--------------------------------------------------------------------------
+    // Performance Metrics
+    //--------------------------------------------------------------------------
+    
+    /**
+     * @brief Get time spent in setup operations
+     * @return Setup time in milliseconds
+     */
+    float getSetupTime() const { return setup_time; }
+    
+    /**
+     * @brief Get time spent in integration
+     * @return Integration time in milliseconds
+     */
+    float getSolveTime() const { return solve_time; }
+    
+    /**
+     * @brief Get total computation time
+     * @return Total time in milliseconds
+     */
+    float getTotalTime() const { return setup_time + solve_time; }
+    
 };

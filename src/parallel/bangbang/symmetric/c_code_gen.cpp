@@ -14,7 +14,8 @@ int main(){
     //Dynamics dyn; // Create an instance of the Dynamics class
     // create_dynamics(true); // Create an instance of the dynamics class
     // Function dyn = get_dynamics(); // Get the dynamics function
-    Function dyn = DynamicsCallback("F", true);
+    DynamicsCallback callback("F", true);
+    Function dyn = callback;
     // Constraints
     Constraints cons; // Create an instance of the Constraints class
 

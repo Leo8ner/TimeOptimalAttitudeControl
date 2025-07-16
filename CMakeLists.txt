@@ -75,18 +75,18 @@ endif()
 find_package(Threads REQUIRED)
 
 # SUNDIALS Configuration
-set(SUNDIALS_INCLUDE_DIR /usr/local/sundials-single/include)
-set(SUNDIALS_LIBRARIES_DIR /usr/local/sundials-single/lib)
+set(SUNDIALS_INCLUDE_DIR /usr/local/sundials-double/include)
+set(SUNDIALS_LIBRARIES_DIR /usr/local/sundials-double/lib)
 
 # Find all required SUNDIALS libraries
 find_library(SUNDIALS_CVODES_LIBRARY
     NAMES sundials_cvodes
-    HINTS ${SUNDIALS_LIBRARIES_DIR} /usr/local/lib /usr/lib /opt/lib
+    HINTS ${SUNDIALS_LIBRARIES_DIR} 
 )
 
 find_library(SUNDIALS_NVECCUDA_LIBRARY
     NAMES sundials_nveccuda
-    HINTS ${SUNDIALS_LIBRARIES_DIR} /usr/local/lib /usr/lib /opt/lib
+    HINTS ${SUNDIALS_LIBRARIES_DIR} 
 )
 
 find_library(SUNDIALS_SUNMATRIXCUSPARSE_LIBRARY
