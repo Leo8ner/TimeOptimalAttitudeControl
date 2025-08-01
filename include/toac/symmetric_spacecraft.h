@@ -30,7 +30,12 @@ inline constexpr double dt_0{T_0/n_stp};        // Time step initial guess------
 inline constexpr double dt_min{0.0};       // Minimum time step---------------, s
 inline constexpr double dt_max{1.0};           // Maximum time step---------------, s
 inline constexpr int n_states{7};              // Number of states----------------, -
-inline constexpr int n_controls{3};            // Number of controls--------------, -
+inline constexpr int n_quat{4};             // Number of quaternions------------------, -
+inline constexpr int n_vel{3};              // Number of angular velocities-----, -
+inline constexpr int n_controls{3};        // Number of controls--------------, -
+inline constexpr int nnz{37};              // Number of nonzeros in Jacobian--, -
+inline constexpr int n_states_total{n_states * n_stp}; // Total number of states across all steps, -
+inline constexpr int n_controls_total{n_controls * n_stp}; // Total number of controls across all steps, -
 
 // Inertia parameters
 inline constexpr double i_x{1.0};              // Moment of inertia around x-axis-, kg*m^2

@@ -2,8 +2,6 @@
 #include <string>
 #include <filesystem>
 #include <casadi/casadi.hpp>
-#include <toac/casadi_callback.h>
-#include <toac/constraints.h>
 #include <toac/cuda_optimizer.h>
 
 using namespace casadi;
@@ -17,12 +15,12 @@ int main(){
     // DynamicsCallback callback("F", true);
     // Function dyn = callback;
 
-    Function dyn = external("F", "libtoac_shared.so");
-    // Constraints
-    Constraints cons; // Create an instance of the Constraints class
-    // Solver
-    std::string plugin = "ipopt"; // Specify the solver plugin to use
-    Optimizer opti(dyn, cons);     // Create an instance of the
+    BatchDynamics dyn;
+
+    Function F = dyn.F; // Get the dynamics function from BatchDynamics
+    Function jac_F = F.jacobian(); // Get the Jacobian function
+    Function jac_jac_F = jac_F.jacobian(); // Get the Hessian function
+
     // options for c-code auto generation
     Dict opts = Dict();
     opts["cpp"] = false;
@@ -31,17 +29,17 @@ int main(){
     std::string prefix_code = std::filesystem::current_path().parent_path().string() + "/code_gen/";
 
     // generate dynamics in c code
-    casadi::CodeGenerator myCodeGen = casadi::CodeGenerator("parsolver.c", opts);
-    myCodeGen.add(opti.solver);
-    //myCodeGen.add(dyn.get_jacobian());
-    //myCodeGen.add(dyn.get_hessian());
+    casadi::CodeGenerator myCodeGen = casadi::CodeGenerator("tesdyn.c", opts);
+    myCodeGen.add(F);
+    myCodeGen.add(jac_F);
+    myCodeGen.add(jac_jac_F);
     myCodeGen.generate(prefix_code);
     // compile c code to a shared library
     std::string prefix_lib = std::filesystem::current_path().parent_path().string() + "/build/";
     std::string compile_command = "gcc -fPIC -shared -O3 " + 
-        prefix_code + "parsolver.c -o " +
-        prefix_lib + "lib_parsolver.so " +
-        "-lipopt -lfatrop -lcasadi -L" + prefix_lib + " -ltoac_shared";
+        prefix_code + "tesdyn.c -o " +
+        prefix_lib + "lib_tesdyn.so " +
+        "-lipopt -lfatrop";
     std::cout << compile_command << std::endl;
 
     int compile_flag = std::system(compile_command.c_str());
