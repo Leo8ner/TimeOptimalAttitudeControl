@@ -37,7 +37,7 @@ int solver_work_bytes(casadi_int *sz_arg, casadi_int* sz_res, casadi_int *sz_iw,
 #define solver_SZ_ARG 253
 #define solver_SZ_RES 14
 #define solver_SZ_IW 2650
-#define solver_SZ_W 52185
+#define solver_SZ_W 51626
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

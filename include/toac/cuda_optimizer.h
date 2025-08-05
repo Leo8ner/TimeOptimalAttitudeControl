@@ -6,6 +6,8 @@
 #include <toac/cuda_dynamics.h>
 #include <toac/constraints.h>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 using namespace casadi;
 
@@ -18,22 +20,26 @@ class Optimizer {
     Slice all;
     MX X, U, T, dt;
     MX p_X0, p_Xf;                      // Parameters
+    DM X_guess, U_guess, dt_guess;     // Initial guesses
+    std::string csv_file;              // CSV file for initial guess
 
     void setupOptimizationProblem();
+    void extractInitialGuess();
+
 
 public:
 
     Function solver; // Solver function
-    Optimizer(const Function& dyn, const Constraints& cons);
+    Optimizer(const Function& dyn, const Constraints& cons, const std::string& csv_data = "");
 
 };
 
 Function get_solver();
 
-DM stateInterpolator(const DM& x0, const DM& xf, int n_stp);
-DM inputInterpolator(const auto& x0, const auto& xf, int n_stp);
-DM ratesInterpolator(const auto& x0, const auto& xf, int n_stp);
-DM quaternionSlerp(const auto& q1, const auto& q2, int n_steps);
+// DM stateInterpolator(const DM& x0, const DM& xf, int n_stp);
+// DM inputInterpolator(const auto& x0, const auto& xf, int n_stp);
+// DM ratesInterpolator(const auto& x0, const auto& xf, int n_stp);
+// DM quaternionSlerp(const auto& q1, const auto& q2, int n_steps);
 
 
 class BatchDynamics {

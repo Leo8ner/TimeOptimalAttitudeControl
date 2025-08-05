@@ -131,10 +131,11 @@ add_library(toac STATIC
             src/lib/dynamics.cpp 
             src/lib/constraints.cpp 
             src/lib/plots.cpp 
-            src/lib/CUDAdynamics.cu 
+            #src/lib/CUDAdynamics.cu 
+            src/lib/cudaRK4.cu
             src/lib/CustomCallback.cpp
             src/lib/CUDAoptimizer.cpp
-            src/lib/external_dyn.cpp
+            src/lib/external_rk4.cpp
 ) 
 
 add_library(toac_shared SHARED 
@@ -142,10 +143,11 @@ add_library(toac_shared SHARED
             src/lib/dynamics.cpp 
             src/lib/constraints.cpp 
             src/lib/plots.cpp 
-            src/lib/CUDAdynamics.cu 
+            #src/lib/CUDAdynamics.cu 
+            src/lib/cudaRK4.cu
             src/lib/CustomCallback.cpp
             src/lib/CUDAoptimizer.cpp
-            src/lib/external_dyn.cpp
+            src/lib/external_rk4.cpp
 ) 
 
 # Set CUDA properties

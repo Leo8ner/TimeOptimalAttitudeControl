@@ -2,13 +2,10 @@
 
 using namespace casadi;
 
-void exportTrajectory(const DM& X, const DM& U, const DM& T, const DM& dt, const std::string& filename) {
+void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const std::string& filename) {
     
-    DM X_expanded = DM::vertcat({DM::zeros(3, X.size2()), X});
-
-    X_expanded(Slice(0, 3), 0) = DM::vertcat({phi_0, theta_0, psi_0}); // Initial Euler angles
     for (int i = 1; i < X.columns(); ++i) {
-        X_expanded(Slice(0, 3), i) = quat2euler(X_expanded(Slice(0, 3), i-1), X(Slice(0, 4), i));;
+        X(Slice(0, 3), i) = quat2euler(X(Slice(0, 3), i-1), X(Slice(3, 7), i));
     }
     std::ofstream file("../output/" + filename);
 
@@ -19,10 +16,10 @@ void exportTrajectory(const DM& X, const DM& U, const DM& T, const DM& dt, const
 
     // Write X
     file << "X\n";
-    for (int i = 0; i < X_expanded.rows(); ++i) {
-        for (int j = 0; j < X_expanded.columns(); ++j) {
-            file << X_expanded(i, j);
-            if (j < X_expanded.columns() - 1) file << ",";
+    for (int i = 0; i < X.rows(); ++i) {
+        for (int j = 0; j < X.columns(); ++j) {
+            file << X(i, j);
+            if (j < X.columns() - 1) file << ",";
         }
         file << "\n";
     }

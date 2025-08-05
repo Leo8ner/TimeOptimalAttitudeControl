@@ -13,6 +13,7 @@ namespace fs = std::filesystem;
 int main(){
 
     std::string plugin = "fatrop"; // Specify the solver plugin to use
+    std::string csv_data = "../output/initial_guess.csv"; // Path to the CSV file for initial guess
     bool fixed_step = true; // Use fixed step size for the integrator
     // Dynamics
     //Dynamics dyn; // Create an instance of the Dynamics class
@@ -21,7 +22,7 @@ int main(){
     Constraints cons; // Create an instance of the Constraints class
 
     // Solver
-    Optimizer opti(dyn.F, cons, plugin, fixed_step);     // Create an instance of the Optimizer class
+    Optimizer opti(dyn.F, cons, plugin, fixed_step, csv_data);     // Create an instance of the Optimizer class
 
     // options for c-code auto generation
     Dict opts = Dict();

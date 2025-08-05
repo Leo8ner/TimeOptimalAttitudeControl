@@ -64,17 +64,19 @@ ImplicitDynamics::ImplicitDynamics(const std::string& plugin) {
     SXDict dae = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
     Dict opts;
     if (plugin == "ipopt") {
-        opts["collocation_scheme"] = "legendre";
-        opts["interpolation_order"] = 3;
-        opts["simplify"] = true;
-        opts["rootfinder"] = "fast_newton";
-        Function f = integrator("f", "collocation", dae, opts);
+        // opts["collocation_scheme"] = "legendre";
+        // opts["interpolation_order"] = 3;
+        // opts["simplify"] = true;
+        // opts["rootfinder"] = "fast_newton";
+        // Function f = integrator("f", "collocation", dae, opts);
+        SX X_next = rk4(X_dot, X, dt);
+        Function f = Function("F", {X, U, dt}, {X_next});
         F = f.map(n_stp, "unroll");
 
     } else if (plugin == "fatrop") {
         // opts["collocation_scheme"] = "radau";
         // opts["interpolation_order"] = 4;
-        opts["simplify"] = true;
+        // opts["simplify"] = true;
         // opts["rootfinder"] = "fast_newton";
         // Function f = integrator("f", "rk", dae, opts);
         SX X_next = rk4(X_dot, X, dt);

@@ -22,7 +22,8 @@ int main(){
     Constraints cons; // Create an instance of the Constraints class
     // Solver
     std::string plugin = "ipopt"; // Specify the solver plugin to use
-    Optimizer opti(dyn, cons);     // Create an instance of the
+    std::string csv_data = "../output/initial_guess.csv"; // Path to the CSV file for initial guess
+    Optimizer opti(dyn, cons, csv_data);     // Create an instance of the
     // options for c-code auto generation
     Dict opts = Dict();
     opts["cpp"] = false;

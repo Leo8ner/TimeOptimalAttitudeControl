@@ -7,7 +7,7 @@
 using namespace casadi;
 
 struct Constraints {
-    DM X_0, X_f;
+    // DM X_0, X_f;
     DM lb_U, ub_U;
     DM lb_dt, ub_dt;
     bool Udot {false};                    // Control input constraints
