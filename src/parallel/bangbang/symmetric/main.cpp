@@ -72,6 +72,39 @@ std::tuple<DM, DM> parseStateVector(const std::string& input) {
     return  std::make_tuple(state, angles_deg);
 }
 
+// Add this helper function before main()
+std::tuple<DM, DM> parseInput(const std::string& initial_state, const std::string& final_state) {
+    std::vector<double> initial_values, final_values;
+    std::istringstream initial_stream(initial_state);
+    std::istringstream final_stream(final_state);
+    std::string token;
+
+    while (std::getline(initial_stream, token, ',')) {
+        initial_values.push_back(std::stod(token));
+    }
+
+    while (std::getline(final_stream, token, ',')) {
+        final_values.push_back(std::stod(token));
+    }
+
+    if (initial_values.size() != 6 || final_values.size() != 6) {
+        throw std::invalid_argument("State vector must have exactly 6 elements");
+    }
+
+    DM quat_i = euler2quat(0, 0, 0);
+    DM omega_i = DM::vertcat({initial_values[3] * DEG, initial_values[4] * DEG, initial_values[5] * DEG});
+
+    double phi_f = (final_values[0] - initial_values[0]) * DEG;
+    double theta_f = (final_values[1] - initial_values[1]) * DEG;
+    double psi_f = (final_values[2] - initial_values[2]) * DEG;
+    DM quat_f = euler2quat(phi_f, theta_f, psi_f);
+    DM omega_f = DM::vertcat({final_values[3] * DEG, final_values[4] * DEG, final_values[5] * DEG});
+    DM X_0 = DM::vertcat({quat_i, omega_i});
+    DM X_f = DM::vertcat({quat_f, omega_f});
+
+    return std::make_tuple(X_0, X_f);
+}
+
 // Modified main function
 int main(int argc, char* argv[]) {
     // Check command line arguments
@@ -88,6 +121,7 @@ int main(int argc, char* argv[]) {
         DM X_f, angles_f;
         std::tie(X_f, angles_f) = parseStateVector(argv[2]);
 
+        std::tie(X_0, X_f) = parseInput(argv[1], argv[2]);
         // Start the timer
         // This is used to measure the time taken by the optimization process
         auto start = std::chrono::high_resolution_clock::now();

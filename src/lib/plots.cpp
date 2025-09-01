@@ -5,6 +5,8 @@ using namespace casadi;
 void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const std::string& filename) {
     
     for (int i = 1; i < X.columns(); ++i) {
+        // X(Slice(0, 3), i) = quat2euler(X(Slice(0, 3), i-1) - X(Slice(0, 3), 0), X(Slice(3, 7), i)) + X(Slice(0, 3), 0);
+        X(Slice(0,3), 0) = DM::zeros(3); // Set initial Euler angles to zero for continuity
         X(Slice(0, 3), i) = quat2euler(X(Slice(0, 3), i-1), X(Slice(3, 7), i));
     }
     std::ofstream file("../output/" + filename);
@@ -86,17 +88,39 @@ DM quat2euler(const DM& euler_angles, const DM& q) {
     double theta_prev = static_cast<double>(euler_angles(1));
     double psi_prev = static_cast<double>(euler_angles(2));
     
-    // Convert quaternion to Euler angles
-    double phi = atan2(2*(q0*q1 + q2*q3), 1 - 2*(q1*q1 + q2*q2));   // Roll
+    double phi, theta, psi;
+    
+    // Calculate sin(theta) for singularity detection
     double sin_theta = 2 * (q0*q2 - q3*q1);
     sin_theta = std::max(-1.0, std::min(1.0, sin_theta));
-    double theta = std::asin(sin_theta);                              // Pitch
-    double psi = atan2(2*(q0*q3 + q1*q2), 1 - 2*(q2*q2 + q3*q3));   // Yaw
     
-    // Unwrap angles to maintain continuity
+    // Singularity threshold
+    const double singularity_threshold = 0.99;
+    
+    if (std::abs(sin_theta) > singularity_threshold) {
+        // Gimbal lock case - use alternative formulation
+        theta = std::asin(sin_theta);
+        
+        if (sin_theta > singularity_threshold) {
+            // Positive singularity (theta ≈ +90°)
+            phi = atan2(2*(q1*q2 + q0*q3), q0*q0 + q1*q1 - q2*q2 - q3*q3);
+            psi = 0.0; // Set psi to zero by convention
+        } else {
+            // Negative singularity (theta ≈ -90°)
+            phi = atan2(-2*(q1*q2 + q0*q3), q0*q0 + q1*q1 - q2*q2 - q3*q3);
+            psi = 0.0; // Set psi to zero by convention
+        }
+    } else {
+        // Normal case - use standard formulation
+        phi = atan2(2*(q0*q1 + q2*q3), 1 - 2*(q1*q1 + q2*q2));
+        theta = std::asin(sin_theta);
+        psi = atan2(2*(q0*q3 + q1*q2), 1 - 2*(q2*q2 + q3*q3));
+    }
+    
+    // Apply continuity correction to all angles
     phi = unwrapAngle(phi, phi_prev);
     theta = unwrapAngle(theta, theta_prev);
     psi = unwrapAngle(psi, psi_prev);
-    
+
     return DM::vertcat({phi, theta, psi});
 }
