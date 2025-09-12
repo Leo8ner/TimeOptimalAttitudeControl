@@ -1,0 +1,739 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <string>
+#include <cuda_runtime.h>
+#include <cusparse.h>
+#include <cusolverSp.h>
+#include <chrono>
+#include <iomanip>
+#include <numeric>
+#include <random>
+#include <algorithm>
+
+// SUNDIALS headers
+#include <sundials/sundials_types.h>
+#include <sundials/sundials_math.h>
+#include <sundials/sundials_context.h>
+#include <cvodes/cvodes.h>
+#include <nvector/nvector_cuda.h>
+#include <sunmatrix/sunmatrix_cusparse.h>
+#include <sunlinsol/sunlinsol_cusolversp_batchqr.h>
+
+// Define constants for batch processing
+#define N_STATES_PER_SYSTEM 7
+#define N_STEPS 256
+#define N_TOTAL_STATES (N_STATES_PER_SYSTEM * N_STEPS)
+#define DELTA_T 0.01  // Time step for integration
+
+// Default physical parameters
+#define I_X 0.5                   
+#define I_Y 1.2
+#define I_Z 0.8
+
+// Sparsity constants
+#define NNZ_PER_BLOCK 37  // 4*6 + 3*2 = 24 + 6 + 7 diagonal = 37 nonzeros per block
+#define TOTAL_NNZ (NNZ_PER_BLOCK * N_STEPS)
+
+// Stream and buffer constants
+#define N_BUFFERS 1  // Single buffer is sufficient
+
+// Error checking macro
+#define CUDA_CHECK(call) \
+    do { \
+        cudaError_t err = call; \
+        if (err != cudaSuccess) { \
+            std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ << " - " << cudaGetErrorString(err) << std::endl; \
+            exit(1); \
+        } \
+    } while(0)
+
+// Timing utility class
+class PrecisionTimer {
+private:
+    std::chrono::high_resolution_clock::time_point start_time;
+    
+public:
+    void start() {
+        start_time = std::chrono::high_resolution_clock::now();
+    }
+    
+    double getElapsedMs() {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+        return duration.count() / 1000.0;
+    }
+};
+
+// Step parameters structure
+struct StepParams {
+    // Control inputs
+    sunrealtype tau_x, tau_y, tau_z;
+    // Initial conditions [q0, q1, q2, q3, wx, wy, wz]
+    sunrealtype q0, q1, q2, q3, wx, wy, wz;
+};
+
+// Device arrays for step parameters (constant during integration)
+__device__ StepParams* d_step_params;
+
+__device__ __constant__ sunrealtype d_inertia_constants[12];
+
+// Optimized RHS kernel with better memory access patterns
+__global__ void dynamicsRHS(int n_total, sunrealtype* y, sunrealtype* ydot) {
+    
+    int sys = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // Direct access to constant memory (cached automatically)
+    const sunrealtype Ix = d_inertia_constants[0];
+    const sunrealtype Iy = d_inertia_constants[1]; 
+    const sunrealtype Iz = d_inertia_constants[2];
+    const sunrealtype half = d_inertia_constants[3];
+    const sunrealtype Ix_inv = d_inertia_constants[4];
+    const sunrealtype Iy_inv = d_inertia_constants[5];
+    const sunrealtype Iz_inv = d_inertia_constants[6];
+    
+    if (sys >= N_STEPS) return;
+        
+    int base_idx = sys * N_STATES_PER_SYSTEM;
+    
+    // Coalesced memory loads
+    sunrealtype state_vars[N_STATES_PER_SYSTEM];
+    
+    // Load all states for this system at once
+    #pragma unroll
+    for (int i = 0; i < N_STATES_PER_SYSTEM; i++) {
+        state_vars[i] = y[base_idx + i];
+    }
+    
+    // Extract state variables
+    sunrealtype q0 = state_vars[0], q1 = state_vars[1];
+    sunrealtype q2 = state_vars[2], q3 = state_vars[3];
+    sunrealtype wx = state_vars[4], wy = state_vars[5], wz = state_vars[6];
+    
+    // Get step parameters from constant memory or texture memory
+    StepParams params = d_step_params[sys];
+    
+    // Compute derivatives with optimized math functions
+    sunrealtype derivs[N_STATES_PER_SYSTEM];
+    
+    // Quaternion derivatives (vectorized)
+    derivs[0] = half * (-q1*wx - q2*wy - q3*wz);
+    derivs[1] = half * ( q0*wx - q3*wy + q2*wz);
+    derivs[2] = half * ( q3*wx + q0*wy - q1*wz);
+    derivs[3] = half * (-q2*wx + q1*wy + q0*wz);
+    
+    // Angular velocity derivatives with FMA operations
+    sunrealtype Iw_x = Ix * wx, Iw_y = Iy * wy, Iw_z = Iz * wz;
+    
+    derivs[4] = Ix_inv * (params.tau_x - (wy * Iw_z - wz * Iw_y));
+    derivs[5] = Iy_inv * (params.tau_y - (wz * Iw_x - wx * Iw_z));
+    derivs[6] = Iz_inv * (params.tau_z - (wx * Iw_y - wy * Iw_x));
+    
+    // Coalesced memory stores
+    #pragma unroll
+    for (int i = 0; i < N_STATES_PER_SYSTEM; i++) {
+        ydot[base_idx + i] = derivs[i];
+    }
+    
+}
+
+// Sparse Jacobian kernel
+__global__ void sparseBatchJacobian(int n_blocks, sunrealtype* block_data, 
+                                    sunrealtype* y) {
+    int block_id = blockIdx.x;
+    
+    if (block_id >= n_blocks) return;
+    
+    // Get pointer to this block's data
+    sunrealtype* block_jac = block_data + block_id * NNZ_PER_BLOCK;
+    
+    // Calculate state index for this block
+    int base_state_idx = block_id * N_STATES_PER_SYSTEM;
+    
+    // Extract state variables for this block
+    sunrealtype q0 = y[base_state_idx + 0];
+    sunrealtype q1 = y[base_state_idx + 1];
+    sunrealtype q2 = y[base_state_idx + 2];
+    sunrealtype q3 = y[base_state_idx + 3];
+    sunrealtype wx = y[base_state_idx + 4];
+    sunrealtype wy = y[base_state_idx + 5];
+    sunrealtype wz = y[base_state_idx + 6];
+    
+    // Use constant memory here too
+    const sunrealtype half = d_inertia_constants[3];
+    const sunrealtype Ix_inv = d_inertia_constants[4];
+    const sunrealtype Iy_inv = d_inertia_constants[5];
+    const sunrealtype Iz_inv = d_inertia_constants[6];
+    const sunrealtype Iz_minus_Iy = d_inertia_constants[7];
+    const sunrealtype Iy_minus_Ix = d_inertia_constants[8];
+    const sunrealtype Ix_minus_Iz = d_inertia_constants[9];
+    const sunrealtype minus_half = d_inertia_constants[10];
+    const sunrealtype zero = d_inertia_constants[11];
+
+    // Fill sparse Jacobian entries in CSR order
+    int idx = 0;
+    
+    // Row 0: q0_dot = 0.5 * (-q1*wx - q2*wy - q3*wz)
+    // Columns: 0,1,2,3,4,5,6
+    block_jac[idx++] = zero;        // J[0,0] diagonal
+    block_jac[idx++] = minus_half * wx;  // J[0,1]
+    block_jac[idx++] = minus_half * wy;  // J[0,2]
+    block_jac[idx++] = minus_half * wz;  // J[0,3]
+    block_jac[idx++] = minus_half * q1;  // J[0,4]
+    block_jac[idx++] = minus_half * q2;  // J[0,5]
+    block_jac[idx++] = minus_half * q3;  // J[0,6]
+    
+    // Row 1: q1_dot = 0.5 * (q0*wx - q3*wy + q2*wz)
+    // Columns: 0,1,2,3,4,5,6
+    block_jac[idx++] = half * wx;        // J[1,0]
+    block_jac[idx++] = zero;             // J[1,1] diagonal
+    block_jac[idx++] = half * wz;        // J[1,2]
+    block_jac[idx++] = minus_half * wy;  // J[1,3]
+    block_jac[idx++] = half * q0;        // J[1,4]
+    block_jac[idx++] = minus_half * q3;  // J[1,5]
+    block_jac[idx++] = half * q2;        // J[1,6]
+    
+    // Row 2: q2_dot = 0.5 * (q3*wx + q0*wy - q1*wz)
+    // Columns: 0,1,2,3,4,5,6
+    block_jac[idx++] = half * wy;  // J[2,0]
+    block_jac[idx++] = minus_half * wz;  // J[2,1]
+    block_jac[idx++] = zero;        // J[2,2] diagonal
+    block_jac[idx++] = half * wx;  // J[2,3]
+    block_jac[idx++] = half * q3;  // J[2,4]
+    block_jac[idx++] = half * q0;  // J[2,5]
+    block_jac[idx++] = minus_half * q1;  // J[2,6]
+    
+    // Row 3: q3_dot = 0.5 * (-q2*wx + q1*wy + q0*wz)
+    // Columns: 0,1,2,3,4,5,6
+    block_jac[idx++] = half * wz;  // J[3,0]
+    block_jac[idx++] = half * wy;  // J[3,1]
+    block_jac[idx++] = minus_half * wx;  // J[3,2]
+    block_jac[idx++] = zero;        // J[3,3] diagonal
+    block_jac[idx++] = minus_half * q2;  // J[3,4]
+    block_jac[idx++] = half * q1;  // J[3,5]
+    block_jac[idx++] = half * q0;  // J[3,6]
+    
+    // Row 4: wx_dot
+    // Columns: 4,5,6
+    block_jac[idx++] = zero;                       // J[4,4] diagonal
+    block_jac[idx++] = -Ix_inv * (Iz_minus_Iy) * wz;  // J[4,5]
+    block_jac[idx++] = -Ix_inv * (Iz_minus_Iy) * wy;  // J[4,6]
+    
+    // Row 5: wy_dot
+    // Columns: 4,5,6
+    block_jac[idx++] = -Iy_inv * (Ix_minus_Iz) * wz;  // J[5,4]
+    block_jac[idx++] = zero;                       // J[5,5] diagonal
+    block_jac[idx++] = -Iy_inv * (Ix_minus_Iz) * wx;  // J[5,6]
+    
+    // Row 6: wz_dot
+    // Columns: 4,5,6
+    block_jac[idx++] = -Iz_inv * (Iy_minus_Ix) * wy;  // J[6,4]
+    block_jac[idx++] = -Iz_inv * (Iy_minus_Ix) * wx;  // J[6,5]
+    block_jac[idx++] = zero;                       // J[6,6] diagonal
+}
+
+// Optimized batch processing structure
+struct BatchBuffer {
+    N_Vector y, ydot;
+    cudaEvent_t completion_event;
+    bool in_use;
+};
+
+// Optimized spacecraft solver class with all improvements integrated
+class OptimizedSpacecraftSolver {
+private:
+    SUNMatrix A;
+    SUNLinearSolver LS;
+    N_Vector y;
+    int n_total, nnz;
+    cusparseHandle_t cusparse_handle;
+    cusolverSpHandle_t cusolver_handle;
+    
+    std::vector<StepParams> h_step_params;
+    StepParams* d_step_params_ptr;
+    
+    void* cvode_mem;
+    SUNContext sunctx;
+    
+    // Pinned memory (only for critical transfers)
+    sunrealtype *h_y_pinned;
+    
+    // Timing
+    PrecisionTimer timer;
+    double setup_time;
+    double solve_time;
+
+public:
+    OptimizedSpacecraftSolver() : n_total(N_TOTAL_STATES), setup_time(0), solve_time(0) {
+        timer.start();
+
+        // Initialize constant memory with precomputed values
+        sunrealtype h_constants[12] = {
+            I_X, I_Y, I_Z, 0.5,                    // [0-3]
+            1.0/I_X, 1.0/I_Y, 1.0/I_Z,      // [4-7]
+            (I_Z - I_Y), (I_X - I_Z), (I_Y - I_X), // [8-10] Euler equation terms
+            -0.5, 0.0             // [11-15] Other frequently used
+        };
+        
+        CUDA_CHECK(cudaMemcpyToSymbol(d_inertia_constants, h_constants, 
+                                    12 * sizeof(sunrealtype)));
+        
+        // Initialize SUNDIALS context
+        int retval = SUNContext_Create(NULL, &sunctx);
+        if (retval != 0) {
+            std::cerr << "Error creating SUNDIALS context" << std::endl;
+            exit(1);
+        }
+        
+        // Create CUDA handles
+        cusparseCreate(&cusparse_handle);
+        cusolverSpCreate(&cusolver_handle);
+        
+        // Initialize vectors - just a single N_Vector
+        y = N_VNew_Cuda(n_total, sunctx);
+        if (!y) {
+            std::cerr << "Error creating CUDA vector" << std::endl;
+            exit(1);
+        }
+        
+        // Use pinned memory only for initial conditions (most critical transfer)
+        CUDA_CHECK(cudaMallocHost(&h_y_pinned, n_total * sizeof(sunrealtype)));
+        
+        // Create block-diagonal sparse matrix with ACTUAL sparsity
+        nnz = N_STEPS * NNZ_PER_BLOCK;
+        
+        A = SUNMatrix_cuSparse_NewBlockCSR(N_STEPS, N_STATES_PER_SYSTEM, 
+                                          N_STATES_PER_SYSTEM, NNZ_PER_BLOCK, 
+                                          cusparse_handle, sunctx);
+        if (!A) {
+            std::cerr << "Error creating cuSPARSE matrix" << std::endl;
+            exit(1);
+        }
+        
+        setupSparseJacobianStructure();
+        
+        // BatchQR solver works with sparse blocks
+        LS = SUNLinSol_cuSolverSp_batchQR(y, A, cusolver_handle, sunctx);
+        if (!LS) {
+            std::cerr << "Error creating cuSolverSp_batchQR linear solver" << std::endl;
+            exit(1);
+        }
+        
+        allocateStepParams();
+        generateRandomSteps();
+        initializeCVODES();
+        
+        setup_time = timer.getElapsedMs();
+    }
+    
+    ~OptimizedSpacecraftSolver() {
+        if (cvode_mem) CVodeFree(&cvode_mem);
+        if (A) SUNMatDestroy(A);
+        if (LS) SUNLinSolFree(LS);
+        if (y) N_VDestroy(y);
+        
+        if (cusparse_handle) cusparseDestroy(cusparse_handle);
+        if (cusolver_handle) cusolverSpDestroy(cusolver_handle);
+        if (d_step_params_ptr) cudaFree(d_step_params_ptr);
+        if (h_y_pinned) cudaFreeHost(h_y_pinned);
+        if (sunctx) SUNContext_Free(&sunctx);
+    }
+    
+    void setupSparseJacobianStructure() {
+        std::vector<sunindextype> h_rowptrs(N_STATES_PER_SYSTEM + 1);
+        std::vector<sunindextype> h_colvals(NNZ_PER_BLOCK);
+        
+        // Build CSR structure (columns must be in ascending order)
+        int nnz_count = 0;
+        
+        // Row 0: columns 0,1,2,3,4,5,6
+        h_rowptrs[0] = nnz_count;
+        for (int j = 0; j < 7; j++) h_colvals[nnz_count++] = j;
+        
+        // Row 1: columns 0,1,2,3,4,5,6
+        h_rowptrs[1] = nnz_count;
+        for (int j = 0; j < 7; j++) h_colvals[nnz_count++] = j;
+        
+        // Row 2: columns 0,1,2,3,4,5,6
+        h_rowptrs[2] = nnz_count;
+        for (int j = 0; j < 7; j++) h_colvals[nnz_count++] = j;
+        
+        // Row 3: columns 0,1,2,3,4,5,6
+        h_rowptrs[3] = nnz_count;
+        for (int j = 0; j < 7; j++) h_colvals[nnz_count++] = j;
+        
+        // Row 4: columns 4,5,6
+        h_rowptrs[4] = nnz_count;
+        for (int j = 4; j < 7; j++) h_colvals[nnz_count++] = j;
+        
+        // Row 5: columns 4,5,6
+        h_rowptrs[5] = nnz_count;
+        for (int j = 4; j < 7; j++) h_colvals[nnz_count++] = j;
+        
+        // Row 6: columns 4,5,6
+        h_rowptrs[6] = nnz_count;
+        for (int j = 4; j < 7; j++) h_colvals[nnz_count++] = j;
+        
+        // Final row pointer
+        h_rowptrs[7] = nnz_count;
+        
+        // Copy to device
+        sunindextype* d_rowptrs = SUNMatrix_cuSparse_IndexPointers(A);
+        sunindextype* d_colvals = SUNMatrix_cuSparse_IndexValues(A);
+        
+        CUDA_CHECK(cudaMemcpy(d_rowptrs, h_rowptrs.data(),
+                                 (N_STATES_PER_SYSTEM + 1) * sizeof(sunindextype), 
+                                 cudaMemcpyHostToDevice));
+        
+        CUDA_CHECK(cudaMemcpy(d_colvals, h_colvals.data(),
+                                 NNZ_PER_BLOCK * sizeof(sunindextype),
+                                 cudaMemcpyHostToDevice));
+        
+        
+        // Set fixed pattern since our sparsity structure doesn't change
+        SUNMatrix_cuSparse_SetFixedPattern(A, SUNTRUE);
+    }
+    
+    void allocateStepParams() {
+        h_step_params.resize(N_STEPS);
+        
+        CUDA_CHECK(cudaMalloc(&d_step_params_ptr, N_STEPS * sizeof(StepParams)));
+        
+        // Copy device pointer to device constant memory
+        CUDA_CHECK(cudaMemcpyToSymbol(d_step_params, &d_step_params_ptr, sizeof(StepParams*)));
+    }
+    
+    void generateRandomSteps() {
+        std::random_device rd;
+        std::mt19937 gen(1);  // Fixed seed for reproducibility
+
+        // Distributions for random parameters
+        std::uniform_real_distribution<sunrealtype> torque_dist(-1, 1);
+        std::uniform_real_distribution<sunrealtype> quat_dist(0, 1);
+        std::uniform_real_distribution<sunrealtype> omega_dist(-1, 1);
+        
+        for (int i = 0; i < N_STEPS; i++) {
+            auto& params = h_step_params[i];
+            
+            // Random control inputs
+            params.tau_x = torque_dist(gen);
+            params.tau_y = torque_dist(gen);
+            params.tau_z = torque_dist(gen);
+                        
+            // Random initial quaternion (normalized)
+            params.q0 = 1.0 + quat_dist(gen);  // q0
+            params.q1 = quat_dist(gen);        // q1
+            params.q2 = quat_dist(gen);        // q2
+            params.q3 = quat_dist(gen);        // q3
+            
+            // Normalize quaternion
+            sunrealtype norm = sqrt(params.q0*params.q0 +
+                                  params.q1*params.q1 +
+                                  params.q2*params.q2 +
+                                  params.q3*params.q3);
+            params.q0 /= norm;
+            params.q1 /= norm;
+            params.q2 /= norm;
+            params.q3 /= norm;
+            
+            // Random initial angular velocities
+            params.wx = omega_dist(gen);  // wx
+            params.wy = omega_dist(gen);  // wy
+            params.wz = omega_dist(gen);  // wz
+        }
+        
+        // Copy to device
+        CUDA_CHECK(cudaMemcpy(d_step_params_ptr, h_step_params.data(), 
+                                 N_STEPS * sizeof(StepParams), cudaMemcpyHostToDevice));
+    }
+    
+    void initializeCVODES() {
+        cvode_mem = CVodeCreate(CV_BDF, sunctx);
+        if (!cvode_mem) {
+            std::cerr << "Error creating CVODES memory" << std::endl;
+            exit(1);
+        }
+        
+        setInitialConditions();
+        
+        int retval = CVodeInit(cvode_mem, rhsFunction, 0.0, y);
+        if (retval != CV_SUCCESS) {
+            std::cerr << "Error initializing CVODES: " << retval << std::endl;
+            exit(1);
+        }
+        
+        CVodeSetUserData(cvode_mem, this);
+        
+        // Relaxed tolerances for batch processing
+        retval = CVodeSStolerances(cvode_mem, 1e-6, 1e-8);
+        if (retval != CV_SUCCESS) {
+            std::cerr << "Error setting tolerances: " << retval << std::endl;
+            exit(1);
+        }
+        
+        retval = CVodeSetLinearSolver(cvode_mem, LS, A);
+        if (retval != CV_SUCCESS) {
+            std::cerr << "Error setting linear solver: " << retval << std::endl;
+            exit(1);
+        }
+        
+        retval = CVodeSetJacFn(cvode_mem, jacobianFunction);
+        if (retval != CV_SUCCESS) {
+            std::cerr << "Error setting Jacobian function: " << retval << std::endl;
+            exit(1);
+        }
+        
+        CVodeSetMaxNumSteps(cvode_mem, 100000);
+    }
+    
+    static int rhsFunction(sunrealtype t, N_Vector y, N_Vector ydot, void* user_data) {
+        int n_total = N_VGetLength(y);
+        
+        sunrealtype* y_data = N_VGetDeviceArrayPointer_Cuda(y);
+        sunrealtype* ydot_data = N_VGetDeviceArrayPointer_Cuda(ydot);
+        
+        // Find optimal configuration
+        int blockSize = 128;  // Based on occupancy optimization
+        int gridSize = (N_STEPS + blockSize - 1) / blockSize;  // Systems per block = 4
+        
+        // Launch optimized kernel with stream
+        dynamicsRHS<<<gridSize, blockSize>>>(n_total, y_data, ydot_data);
+                
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "RHS kernel error: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
+        
+        return 0;
+    }
+    
+    static int jacobianFunction(sunrealtype t, N_Vector y, N_Vector fy, 
+                               SUNMatrix Jac, void* user_data, 
+                               N_Vector tmp1, N_Vector tmp2, N_Vector tmp3) {
+        
+        // Get block information
+        int n_blocks = SUNMatrix_cuSparse_NumBlocks(Jac);
+        
+        // Get pointer to the data array (contains all blocks)
+        sunrealtype* data = SUNMatrix_cuSparse_Data(Jac);
+        sunrealtype* y_data = N_VGetDeviceArrayPointer_Cuda(y);
+        
+        
+        // Launch kernel with one block per spacecraft system, using stream
+        dim3 blockSize(32);
+        dim3 gridSize(n_blocks);
+        
+        sparseBatchJacobian<<<gridSize, blockSize>>>(n_blocks, data, y_data);
+        
+        
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "Jacobian kernel error: " << cudaGetErrorString(err) << std::endl;
+            return -1;
+        }
+        
+        return 0;
+    }
+    
+    double solveBatch() {
+        timer.start();
+        
+        // Define the time step size
+        sunrealtype t_final = DELTA_T;
+        sunrealtype t = 0.0;
+        
+        int retval = CVode(cvode_mem, t_final, y, &t, CV_NORMAL);
+        
+        if (retval < 0) {
+            std::cerr << "CVode error: " << retval << std::endl;
+            return -1;
+        }
+        
+        solve_time = timer.getElapsedMs();
+        return solve_time;
+    }
+    
+    void printSolutionStats() {
+        long int nsteps, nfevals, nlinsetups;
+        CVodeGetNumSteps(cvode_mem, &nsteps);
+        CVodeGetNumRhsEvals(cvode_mem, &nfevals);
+        CVodeGetNumLinSolvSetups(cvode_mem, &nlinsetups);
+        
+        long int njevals, nliters;
+        CVodeGetNumJacEvals(cvode_mem, &njevals);
+        CVodeGetNumLinIters(cvode_mem, &nliters);
+        
+        std::cout << "Batch integration stats:" << std::endl;
+        std::cout << "  Setup time: " << setup_time << " ms" << std::endl;
+        std::cout << "  Solve time: " << solve_time << " ms" << std::endl;
+        std::cout << "  Total time: " << (setup_time + solve_time) << " ms" << std::endl;
+        std::cout << "  Steps: " << nsteps << std::endl;
+        std::cout << "  RHS evaluations: " << nfevals << std::endl;
+        std::cout << "  Jacobian evaluations: " << njevals << std::endl;
+        std::cout << "  Linear solver setups: " << nlinsetups << std::endl;
+        std::cout << "  Linear iterations: " << nliters << std::endl;
+        
+        auto quaternion_norms = getQuaternionNorms();
+        double avg_norm = std::accumulate(quaternion_norms.begin(), quaternion_norms.end(), 0.0) / N_STEPS;
+        double max_deviation = 0.0;
+        for (auto norm : quaternion_norms) {
+            max_deviation = std::max(max_deviation, std::abs(static_cast<double>(norm) - 1.0));
+        }
+        
+        std::cout << "  Average quaternion norm: " << std::setprecision(6) << avg_norm << std::endl;
+        std::cout << "  Maximum norm deviation: " << std::setprecision(2) << (max_deviation * 100.0) << "%" << std::endl;
+    }
+    
+    std::vector<sunrealtype> getQuaternionNorms() {
+        std::vector<sunrealtype> y_host(n_total);
+        sunrealtype* d_y = N_VGetDeviceArrayPointer_Cuda(y);
+        cudaMemcpy(y_host.data(), d_y, n_total * sizeof(sunrealtype), cudaMemcpyDeviceToHost);
+        
+        std::vector<sunrealtype> norms(N_STEPS);
+        for (int i = 0; i < N_STEPS; i++) {
+            int base_idx = i * N_STATES_PER_SYSTEM;
+            norms[i] = sqrt(y_host[base_idx+0]*y_host[base_idx+0] + 
+                           y_host[base_idx+1]*y_host[base_idx+1] + 
+                           y_host[base_idx+2]*y_host[base_idx+2] + 
+                           y_host[base_idx+3]*y_host[base_idx+3]);
+        }
+        return norms;
+    }
+    
+    std::vector<std::vector<sunrealtype>> getSolution() {
+        std::vector<sunrealtype> y_host(n_total);
+        sunrealtype* d_y = N_VGetDeviceArrayPointer_Cuda(y);
+        cudaMemcpy(y_host.data(), d_y, n_total * sizeof(sunrealtype), cudaMemcpyDeviceToHost);
+        
+        std::vector<std::vector<sunrealtype>> solutions(N_STEPS);
+        for (int i = 0; i < N_STEPS; i++) {
+            solutions[i].resize(N_STATES_PER_SYSTEM);
+            int base_idx = i * N_STATES_PER_SYSTEM;
+            for (int j = 0; j < N_STATES_PER_SYSTEM; j++) {
+                solutions[i][j] = y_host[base_idx + j];
+            }
+        }
+        return solutions;
+    }
+    
+    double getSetupTime() const { return setup_time; }
+    double getSolveTime() const { return solve_time; }
+    double getTotalTime() const { return setup_time + solve_time; }
+    
+private:
+    void setInitialConditions() {
+        std::vector<sunrealtype> y0(n_total);
+        
+        for (int i = 0; i < N_STEPS; i++) {
+            int base_idx = i * N_STATES_PER_SYSTEM;
+            const auto& params = h_step_params[i];
+            
+            y0[base_idx + 0] = params.q0; // q0
+            y0[base_idx + 1] = params.q1; // q1
+            y0[base_idx + 2] = params.q2; // q2
+            y0[base_idx + 3] = params.q3; // q3
+            y0[base_idx + 4] = params.wx; // wx
+            y0[base_idx + 5] = params.wy; // wy
+            y0[base_idx + 6] = params.wz; // wz
+        }
+        
+        // Use pinned memory for faster transfers
+        memcpy(h_y_pinned, y0.data(), n_total * sizeof(sunrealtype));
+        
+        sunrealtype* d_y = N_VGetDeviceArrayPointer_Cuda(y);
+        CUDA_CHECK(cudaMemcpy(d_y, h_y_pinned, n_total * sizeof(sunrealtype), 
+                                  cudaMemcpyHostToDevice));
+    }
+public:
+    // Benchmarking function for multiple runs
+    void benchmark(int num_runs = 10) {
+        std::vector<double> solve_times;
+        std::vector<double> solve_accuracy;
+
+        std::cout << "\nRunning benchmark with " << num_runs << " iterations..." << std::endl;
+        
+        for (int i = 0; i < num_runs; i++) {
+            // Reset initial conditions
+            setInitialConditions();
+            
+            // Solve
+            double time = solveBatch();
+            double max_deviation;
+            if (i > 0) {  // Skip first run (warmup)
+                solve_times.push_back(time);
+                auto quaternion_norms = getQuaternionNorms();
+                for (auto norm : quaternion_norms) {
+                    max_deviation = std::max(max_deviation, std::abs(static_cast<double>(norm) - 1.0));
+                }
+                solve_accuracy.push_back(max_deviation * 100.0);  // Store as percentage
+            }
+        }
+        
+        // Calculate statistics
+        double avg_time = std::accumulate(solve_times.begin(), solve_times.end(), 0.0) / solve_times.size();
+        double min_time = *std::min_element(solve_times.begin(), solve_times.end());
+        double max_time = *std::max_element(solve_times.begin(), solve_times.end());
+        double avg_deviation = std::accumulate(solve_accuracy.begin(), solve_accuracy.end(), 0.0) / solve_accuracy.size();
+
+
+
+        std::cout << "\nBenchmark Results:" << std::endl;
+        std::cout << "  Average solve time: " << avg_time << " ms" << std::endl;
+        std::cout << "  Min solve time: " << min_time << " ms" << std::endl;
+        std::cout << "  Max solve time: " << max_time << " ms" << std::endl;
+        std::cout << "  Throughput: " << (N_STEPS / (avg_time / 1000.0)) << " systems/second" << std::endl;
+        std::cout << "  Average quaternion norm deviation: " << avg_deviation << "%" << std::endl;
+    }
+};
+
+int main() {
+    try {
+        int deviceCount;
+        CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
+        if (deviceCount == 0) {
+            std::cerr << "No CUDA devices found!" << std::endl;
+            return 1;
+        }
+        
+        cudaDeviceProp prop;
+        CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
+        std::cout << "GPU: " << prop.name << " (Compute " << prop.major << "." << prop.minor << ")" << std::endl;
+        std::cout << "Memory: " << (prop.totalGlobalMem / (1024*1024)) << " MB" << std::endl;
+        std::cout << "sizeof(sunrealtype): " << sizeof(sunrealtype) << " bytes" << std::endl;
+        std::cout << "sizeof(sunindextype): " << sizeof(sunindextype) << " bytes" << std::endl;
+
+        std::cout << "\n" << std::string(80, '=') << std::endl;
+        std::cout << "OPTIMIZED BATCH SPACECRAFT TRAJECTORY SOLVER" << std::endl;
+        std::cout << std::string(80, '=') << std::endl;
+        
+        std::cout << "Number of steps: " << N_STEPS << std::endl;
+        std::cout << "States per step: " << N_STATES_PER_SYSTEM << std::endl;
+        std::cout << "Total system size: " << N_TOTAL_STATES << " states" << std::endl;
+        
+        // Print results
+        OptimizedSpacecraftSolver solver;
+        // double solve_time = solver.solveBatch();
+        // solver.printSolutionStats();
+        
+        // // Display a few sample solutions
+        // auto solutions = solver.getAllSolutions();
+        // std::cout << "\nSample final states (first 3 steps):" << std::endl;
+        // for (int i = 0; i < std::min(3, N_STEPS); i++) {
+        //     std::cout << "  Step " << i << ": quat=[" << std::setprecision(4)
+        //               << solutions[i][0] << "," << solutions[i][1] << "," 
+        //               << solutions[i][2] << "," << solutions[i][3] << "], "
+        //               << "ω=[" << solutions[i][4] << "," << solutions[i][5] << "," 
+        //               << solutions[i][6] << "]" << std::endl;
+        // }
+        solver.benchmark(100);  // Run benchmark with 10 iterations
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    return 0;
+}
+// Compile with:
+// nvcc -O3 --use_fast_math -arch=sm_61 -o sparse_cuda sparse_jacobian.cu -I$SUNDIALS_DIR/include -L$SUNDIALS_DIR/lib -lsundials_cvodes -lsundials_nveccuda -lsundials_sunmatrixcusparse -lsundials_sunlinsolcusolversp -lcudart -lcusparse -lcusolver -lsundials_core

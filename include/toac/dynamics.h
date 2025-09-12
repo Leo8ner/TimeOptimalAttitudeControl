@@ -2,11 +2,11 @@
 #define DYNAMICS_H
 
 #include <toac/symmetric_spacecraft.h>
+#include <toac/helper_functions.h>
 #include <iostream>
 #include <string>
 #include <vector>
 #include <stdexcept>
-#include <filesystem>
 #include <casadi/casadi.hpp>
 
 using namespace casadi;
@@ -27,11 +27,5 @@ struct ImplicitDynamics {
 
     ImplicitDynamics(const std::string& plugin = "ipopt");
 };
-
-// Takes a 3D vector w and returns a 4x4 skew-symmetric matrix
-SX skew4(const SX& w);
-
-// RK4 integrator
-SX rk4(const SX& x_dot, const SX& x, const SX& dt);
 
 #endif // DYNAMICS_H

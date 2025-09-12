@@ -33,7 +33,6 @@
 
 # Folders
 build/
-tests/
 code_gen/
 output/
 .vscode/

@@ -1,0 +1,6 @@
+optimize sensitivity analysis
+ converged!
+
+ Computation Time: 568.994 s
+Computed Maneuver Duration: 3.28513 s
+Theoretical Optimal Duration: 3.243

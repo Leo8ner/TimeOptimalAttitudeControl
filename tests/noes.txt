@@ -1,0 +1,5 @@
+Look into non spherical symmerical spacecraf
+convert initial attitude into body frame-change iniial guess.
+look ino pso paricle swarm opimizaion ask professor for the book.
+finally (if i want) use jetson - probably skip this
+write thesis.

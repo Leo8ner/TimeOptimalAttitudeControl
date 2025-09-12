@@ -3,6 +3,7 @@
 
 #include <casadi/casadi.hpp>
 #include <toac/symmetric_spacecraft.h>
+#include <toac/helper_functions.h>
 
 using namespace casadi;
 
@@ -15,9 +16,6 @@ struct Constraints {
     Constraints();
     void setUdot();                      // Set the constraints for the control input
 };
-
-// Converts Euler angles to a quaternion
-DM euler2quat(const double& phi, const double& theta, const double& psi);
 
 
 #endif // CONSTRAINTS_H

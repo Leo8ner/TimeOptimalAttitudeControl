@@ -244,7 +244,7 @@ class SpacecraftAnimator:
         self.setup_pause_button()
         self.setup_frame_slider()
 
-        plt.tight_layout()
+        # plt.tight_layout()
     
     def setup_data_plots(self):
         """Setup the data visualization plots"""

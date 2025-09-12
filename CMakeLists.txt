@@ -130,24 +130,24 @@ add_library(toac STATIC
             src/lib/optimizer.cpp 
             src/lib/dynamics.cpp 
             src/lib/constraints.cpp 
-            src/lib/plots.cpp 
-            #src/lib/CUDAdynamics.cu 
             src/lib/cudaRK4.cu
             src/lib/CustomCallback.cpp
             src/lib/CUDAoptimizer.cpp
             src/lib/external_rk4.cpp
+            src/lib/pso.cu
+            src/lib/helper_functions.cpp
 ) 
 
 add_library(toac_shared SHARED 
             src/lib/optimizer.cpp 
             src/lib/dynamics.cpp 
             src/lib/constraints.cpp 
-            src/lib/plots.cpp 
-            #src/lib/CUDAdynamics.cu 
             src/lib/cudaRK4.cu
             src/lib/CustomCallback.cpp
             src/lib/CUDAoptimizer.cpp
             src/lib/external_rk4.cpp
+            src/lib/helper_functions.cpp
+
 ) 
 
 # Set CUDA properties
@@ -226,6 +226,13 @@ add_executable(SerialBangbangSymmetricCodeGen src/serial/bangbang/symmetric/main
 target_link_libraries(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
 target_include_directories(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLUDE_DIR} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
+add_executable(PSOwithSerial src/serial/bangbang/symmetric/main_pso.cpp)
+
+# Link the executable to the libraries
+target_link_libraries(PSOwithSerial PRIVATE ${CASADI_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
+target_include_directories(PSOwithSerial PRIVATE ${CASADI_INCLUDE_DIR} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+
+
 # Uncomment and fix the parallel version when needed
 add_executable(ParGenerateCode src/parallel/bangbang/symmetric/c_code_gen.cpp)
 target_link_libraries(ParGenerateCode PRIVATE
@@ -281,8 +288,22 @@ add_custom_target(parallel
     COMMENT "Running ParallelBangbangSymmetricCodeGen automatically after build"
 )
 
+add_custom_target(pso 
+    COMMAND PSOwithSerial
+    DEPENDS run_codegen_serial PSOwithSerial
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running PSOwithSerial automatically after build"
+)
+
+add_custom_target(only_pso 
+    COMMAND PSOwithSerial
+    DEPENDS PSOwithSerial
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running PSOwithSerial automatically after build"
+)
+
 
 # Add tests
-add_executable(TestDyn src/parallel/bangbang/symmetric/test_code_gen.cpp)
-target_link_libraries(TestDyn PRIVATE ${CASADI_LIBRARIES} toac)
-target_include_directories(TestDyn PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+# add_executable(TestDyn src/parallel/bangbang/symmetric/test_code_gen.cpp)
+# target_link_libraries(TestDyn PRIVATE ${CASADI_LIBRARIES} toac)
+# target_include_directories(TestDyn PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)

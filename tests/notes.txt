@@ -1,0 +1,16 @@
+Sparse: 117.5 ms avg over 10 runs
+Dense: 
+Opt: 5.76416 ms
+
+
+Equally precise.Use test.cu next steps: convert it to a usable class, create library, use it as a casadi external function.
+
+1. Generate Callback------------look at claude its finally happening :)
+1.1 Provide jacobian - this
+1.2 Provide hessian
+2. Export it as external library
+3. Import it as external function
+
+
+How to use acado -> does it support numerical integrators?
+Can I have the jacobian as an output of the CUDAOptimizer as well?
