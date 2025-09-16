@@ -5,6 +5,7 @@
 // Constants
 inline constexpr double PI{3.141592653589793}; // Pi------------------------------, -
 inline constexpr double DEG{PI/180.0};         // Degrees to radians conversion---, rad/deg
+inline constexpr double RAD{180.0/PI};         // Radians to degrees conversion---, deg/rad
 
 // SIM parameters
 inline constexpr double T_0{2.4};              // Time horizon initial guess------, s

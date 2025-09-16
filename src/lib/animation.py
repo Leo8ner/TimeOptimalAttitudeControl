@@ -250,9 +250,9 @@ class SpacecraftAnimator:
         """Setup the data visualization plots"""
         
         # Euler angles plot
-        self.ax_euler.plot(self.time_data, np.rad2deg(self.euler_angles[0]), 'r-', label='Roll (φ)')
-        self.ax_euler.plot(self.time_data, np.rad2deg(self.euler_angles[1]), 'g-', label='Pitch (θ)')
-        self.ax_euler.plot(self.time_data, np.rad2deg(self.euler_angles[2]), 'b-', label='Yaw (ψ)')
+        self.ax_euler.plot(self.time_data, self.euler_angles[0], 'r-', label='Roll (φ)')
+        self.ax_euler.plot(self.time_data, self.euler_angles[1], 'g-', label='Pitch (θ)')
+        self.ax_euler.plot(self.time_data, self.euler_angles[2], 'b-', label='Yaw (ψ)')
         self.euler_marker, = self.ax_euler.plot([], [], 'ko', markersize=8)
         self.ax_euler.set_xlabel('Time (s)')
         self.ax_euler.set_ylabel('Angle (deg)')
@@ -391,9 +391,9 @@ class SpacecraftAnimator:
         
         # Update Euler angles marker
         euler_values = [
-            np.rad2deg(self.euler_angles[0][step]),
-            np.rad2deg(self.euler_angles[1][step]),
-            np.rad2deg(self.euler_angles[2][step])
+            self.euler_angles[0][step],
+            self.euler_angles[1][step],
+            self.euler_angles[2][step]
         ]
         self.euler_marker.set_data([current_time, current_time, current_time], euler_values)
         
@@ -433,9 +433,9 @@ class SpacecraftAnimator:
 Time: {current_time:.3f}s / {self.total_time:.3f}s
 
 Euler Angles (deg):
-Roll:  {np.rad2deg(self.euler_angles[0][step]):8.2f}°
-Pitch: {np.rad2deg(self.euler_angles[1][step]):8.2f}°
-Yaw:   {np.rad2deg(self.euler_angles[2][step]):8.2f}°
+Roll:  {self.euler_angles[0][step]:8.2f}°
+Pitch: {self.euler_angles[1][step]:8.2f}°
+Yaw:   {self.euler_angles[2][step]:8.2f}°
 
 Quaternion:
 w: {self.quaternions[0][step]:8.4f}

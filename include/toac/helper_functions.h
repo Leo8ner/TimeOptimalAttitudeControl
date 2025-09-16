@@ -85,21 +85,21 @@ SX rk4(const SX& x_dot, const SX& x, const SX& dt);
  * @param dt Time step vector [1 x n_steps]
  * @param filename Output CSV file path
  */
-void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const std::string& filename);
+void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const DM& angles_0, const DM& angles_f, const std::string& filename);
 
 /**
  * @brief Convert quaternion to Euler angles (ZYX convention)
  * @param quat Quaternion as DM object [4 x 1]
  * @return Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  */
-double unwrapAngle(double current_angle, double previous_angle);
+double unwrapAngle(double current, double previous, double target);
 
 /**
  * @brief Convert quaternion to Euler angles (ZYX convention)
  * @param euler_angles Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  * @param q Quaternion as DM object [4 x 1]
  */
-DM quat2euler(const DM& euler_angles, const DM& q);
+DM quat2euler(const DM& euler_prev, const DM& q, const DM& euler_target);
 
 /**
  * @brief Parse initial and final state vectors from command line arguments

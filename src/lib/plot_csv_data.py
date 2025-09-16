@@ -107,9 +107,9 @@ def main(csv_path: str | Path) -> None:
 
     # ------------------------- plotting --------------------------------------
     plt.figure()
-    plt.plot(time, X[0]*180/np.pi, label=r"$\phi$")
-    plt.plot(time, X[1]*180/np.pi, label=r"$\theta$")
-    plt.plot(time, X[2]*180/np.pi, label=r"$\psi$")
+    plt.plot(time, X[0], label=r"$\phi$")
+    plt.plot(time, X[1], label=r"$\theta$")
+    plt.plot(time, X[2], label=r"$\psi$")
     plt.xlabel("Time  [s]")
     plt.ylabel("Euler Angles [deg]")
     plt.title("Attitude with time")
@@ -156,8 +156,6 @@ def main(csv_path: str | Path) -> None:
     plt.savefig("../output/control_inputs.pdf" , format='pdf', dpi=600, bbox_inches='tight')
 
     print("Plotting done. Check the output directory for results.")
-    #plt.tight_layout()
-    #plt.show()
 
 
 if __name__ == "__main__":

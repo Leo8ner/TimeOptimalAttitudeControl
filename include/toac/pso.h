@@ -91,7 +91,7 @@
 #define QUAT_NORM_PENALTY 1000.0f
 
 /** @brief Penalty for final state error from target */
-#define FINAL_STATE_PENALTY 100.0f
+#define FINAL_STATE_PENALTY 1000.0f
 
 /** @brief Penalty for excessive torque switching */
 #define SWITCH_PENALTY 0.1f

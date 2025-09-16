@@ -77,11 +77,11 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         plugin_opts = {
             {"expand", true},
             {"structure_detection", "auto"},
-            // {"debug", true}
+            //{"debug", true}
         };
         solver_opts = {
             {"print_level", 0},
-            //{"tol", 1e-10},              // Main tolerance
+            //{"tol", 1e-16},              // Main tolerance
             //{"constr_viol_tol", 1e-16}, // Constraint violation tolerance
             //{"mu_init", 1e-1},           // Larger initial barrier parameter
         };
