@@ -10,8 +10,8 @@ inline constexpr double DEG{PI/180.0};         // Degrees to radians conversion-
 inline constexpr double T_0{2.4};              // Time horizon initial guess------, s
 inline constexpr int n_stp{50};                 // Number of time steps------------, -
 inline constexpr double dt_0{T_0/n_stp};        // Time step initial guess---------, s
-inline constexpr double dt_min{0.0};       // Minimum time step---------------, s
-inline constexpr double dt_max{1.0};           // Maximum time step---------------, s
+inline constexpr double dt_min{0.00001};       // Minimum time step---------------, s
+inline constexpr double dt_max{0.1};           // Maximum time step---------------, s
 inline constexpr int n_states{7};              // Number of states----------------, -
 inline constexpr int n_quat{4};             // Number of quaternions------------------, -
 inline constexpr int n_vel{3};              // Number of angular velocities-----, -

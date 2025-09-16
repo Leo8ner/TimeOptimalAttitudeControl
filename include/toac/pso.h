@@ -53,10 +53,10 @@
  *============================================================================*/
 
 /** @brief Maximum PSO iterations for optimization convergence */
-#define MAX_ITERA 500
+#define MAX_ITERA 250
 
 /** @brief Total number of particles in swarm */
-#define N_PARTICLES 1280
+#define N_PARTICLES 640
 
 /** @brief CUDA threads per block (must be multiple of 32, ≤ 1024) */
 #define ThreadsPerBlock 128
@@ -69,7 +69,7 @@
  *============================================================================*/
 
 /** @brief Inertia weight - controls particle momentum */
-#define W 1.0f
+#define W 5.0f
 
 /** @brief Cognitive weight - attraction to personal best */
 #define C1 2.0f
@@ -81,7 +81,7 @@
 #define MIN_W 0.1f
 
 /** @brief Enable inertia weight decay over iterations (1=enable, 0=disable) */
-#define DEC_INERTIA 0
+#define DEC_INERTIA 1
 
 /*==============================================================================
  * CONSTRAINT PENALTY COEFFICIENTS
@@ -91,13 +91,13 @@
 #define QUAT_NORM_PENALTY 1000.0f
 
 /** @brief Penalty for final state error from target */
-#define FINAL_STATE_PENALTY 1000.0f
+#define FINAL_STATE_PENALTY 100.0f
 
 /** @brief Penalty for excessive torque switching */
-#define SWITCH_PENALTY 0.01f
+#define SWITCH_PENALTY 0.1f
 
 /** @brief Penalty coefficient for maneuver time minimization */
-#define DT_PENALTY 1.0f
+#define DT_PENALTY 10.0f
 
 /*==============================================================================
  * UTILITY MACROS
@@ -181,7 +181,6 @@ __host__ __device__ float quaternion_norm(float *q);
 
 // Dynamics and integration
 __host__ __device__ void attitude_dynamics(float *X, float *U, float *X_dot, attitude_params *params);
-__host__ __device__ void rk4(float *X, float *U, float dt, float *X_next, attitude_params *params);
 __host__ __device__ void euler(float *X, float *U, float dt, float *X_next, attitude_params *params);
 
 // Fitness function
@@ -251,7 +250,6 @@ public:
      * @param social_weight PSO social coefficient (c2)
      */
     void setPSOParameters(int max_iterations = MAX_ITERA, 
-                         int num_particles = N_PARTICLES,
                          double inertia_weight = W,
                          double cognitive_weight = C1, 
                          double social_weight = C2);

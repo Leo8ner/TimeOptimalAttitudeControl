@@ -19,7 +19,6 @@
 #include <iostream>
 #include <casadi/casadi.hpp>
 #include "symmetric_spacecraft.h"
-#include "test2.h"
 
 using namespace casadi;
 
@@ -109,7 +108,5 @@ DM quat2euler(const DM& euler_angles, const DM& q);
  * @return Tuple containing (X_0, X_f) as DM objects
  */
 std::tuple<DM, DM> parseInput(const std::string& initial_state, const std::string& final_state);
-
-int mainish(int argc, char* argv[]);
 
 #endif /* HELPER_FUNCTIONS_H */

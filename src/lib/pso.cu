@@ -82,31 +82,6 @@ __host__ __device__ void attitude_dynamics(float *X, float *U, float *X_dot, att
     }
 }
 
-__host__ __device__ void rk4(float *X, float *U, float dt, float *X_next, attitude_params *params) {
-    float k1[n_states], k2[n_states], k3[n_states], k4[n_states];
-    float X_temp[n_states];
-    
-    attitude_dynamics(X, U, k1, params);
-    
-    for(int i = 0; i < n_states; i++) X_temp[i] = X[i] + dt/2.0f*k1[i];
-    attitude_dynamics(X_temp, U, k2, params);
-
-    for(int i = 0; i < n_states; i++) X_temp[i] = X[i] + dt/2.0f*k2[i];
-    attitude_dynamics(X_temp, U, k3, params);
-
-    for(int i = 0; i < n_states; i++) X_temp[i] = X[i] + dt*k3[i];
-    attitude_dynamics(X_temp, U, k4, params);
-
-    for(int i = 0; i < n_states; i++) {
-        X_next[i] = X[i] + dt/6.0f*(k1[i] + 2.0f*k2[i] + 2.0f*k3[i] + k4[i]);
-    }
-    
-    float q_norm = quaternion_norm(X_next);
-    if(q_norm > 1e-6f) {
-        for(int i = 0; i < n_quat; i++) X_next[i] /= q_norm;
-    }
-}
-
 __host__ __device__ void euler(float *X, float *U, float dt, float *X_next, attitude_params *params) {
     float X_dot[n_states];
     
@@ -124,12 +99,11 @@ __host__ __device__ void euler(float *X, float *U, float dt, float *X_next, atti
 
 __host__ __device__ float fit(float *solution_vector, int particle_id, attitude_params *params) {
     float dt = solution_vector[PARTICLE_POS_IDX(particle_id, DT_IDX)];
-    
+    float constraints_violation = 0.0f;
     float X[n_states], X_next[n_states];
     for(int i = 0; i < n_quat; i++) X[i] = params->initial_quat[i];
     for(int i = 0; i < n_vel; i++) X[n_quat+i] = params->initial_omega[i];
 
-    float constraint_violation = 0.0f;
     int switches = 0;
 
     for(int step = 0; step < N_STEPS; step++) {
@@ -150,13 +124,13 @@ __host__ __device__ float fit(float *solution_vector, int particle_id, attitude_
         euler(X, U, dt, X_next, params);
 
         float q_norm = quaternion_norm(X_next);
-        constraint_violation += QUAT_NORM_PENALTY * fabsf(q_norm - 1.0f);
+        constraints_violation -= QUAT_NORM_PENALTY * fabsf(q_norm - 1.0f);
 
         for(int i = 0; i < n_states; i++) X[i] = X_next[i];
     }
 
-    constraint_violation += SWITCH_PENALTY * switches;
-    
+    constraints_violation -= SWITCH_PENALTY * switches;
+
     float final_error = 0.0f;
     for(int i = 0; i < n_quat; i++) {
         final_error += pow(X[i] - params->target_quat[i], 2);
@@ -165,11 +139,12 @@ __host__ __device__ float fit(float *solution_vector, int particle_id, attitude_
         final_error += pow(X[n_quat+i] - params->target_omega[i], 2);
     }
     final_error = sqrt(final_error);
-    constraint_violation += FINAL_STATE_PENALTY * final_error;
-    printf("Particle %d final error: %f\n", particle_id, final_error);
+    constraints_violation -= FINAL_STATE_PENALTY * final_error;
     float total_time = dt * N_STEPS;
-    
-    return -DT_PENALTY * total_time - constraint_violation;
+
+    constraints_violation -= DT_PENALTY * total_time;
+    return constraints_violation;
+
 }
 
 /*==============================================================================
@@ -230,7 +205,7 @@ __global__ void move(float *position_d, float *velocity_d, float *fitness_d,
     
     float new_fitness = fit(position_d, particle_id, &att_params_d);
     fitness_d[particle_id] = new_fitness;
-    
+
     if (new_fitness > pbest_fit_d[particle_id]) {
         pbest_fit_d[particle_id] = new_fitness;
         for (int dim = 0; dim < dimensions_d; dim++) {
@@ -265,7 +240,6 @@ __global__ void move(float *position_d, float *velocity_d, float *fitness_d,
                     best_idx = i;
                 }
             }
-            
             aux[blockIdx.x] = best_fitness;
             aux_pos[blockIdx.x] = privateBestParticleQueue[best_idx];
         }
@@ -344,12 +318,10 @@ PSOOptimizer::PSOOptimizer(const double* initial_state, const double* target_sta
     for (int i = 0; i < n_quat; i++) {
         att_params_.initial_quat[i] = static_cast<float>(initial_state[i]);
         att_params_.target_quat[i] = static_cast<float>(target_state[i]);
-        printf("Initial quat[%d]: %f, Target quat[%d]: %f\n", i, att_params_.initial_quat[i], i, att_params_.target_quat[i]);
     }
     for (int i = 0; i < n_vel; i++) {
         att_params_.initial_omega[i] = static_cast<float>(initial_state[i + n_quat]);
         att_params_.target_omega[i] = static_cast<float>(target_state[i + n_quat]);
-        printf("Initial omega[%d]: %f, Target omega[%d]: %f\n", i, att_params_.initial_omega[i], i, att_params_.target_omega[i]);
     }
     
     // Initialize velocity limits
@@ -374,12 +346,12 @@ PSOOptimizer::~PSOOptimizer() {
     cleanup();
 }
 
-void PSOOptimizer::setPSOParameters(int max_iterations, int num_particles,
+void PSOOptimizer::setPSOParameters(int max_iterations,
                                    double inertia_weight, double cognitive_weight, double social_weight) {
     
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
 
-    num_particles_ = num_particles;
+    max_iterations_ = max_iterations;
     inertia_weight_ = static_cast<float>(inertia_weight);
     cognitive_weight_ = static_cast<float>(cognitive_weight);
     social_weight_ = static_cast<float>(social_weight);
@@ -627,25 +599,20 @@ bool PSOOptimizer::optimize(casadi::DM& X, casadi::DM& U, casadi::DM& dt) {
 
     // Copy final results
     if (!handleCudaError(cudaMemcpy(&gbest_, gbest_d_, sizeof(particle_gbest), cudaMemcpyDeviceToHost), __FILE__, __LINE__)) {
+        printf("Error copying final results from device to host\n");
         cleanup();
         return false;
     }
-
-    extractResults(X, U, dt);
 
     dt_opt_ = gbest_.position[DT_IDX];
     total_time_ = dt_opt_ * N_STEPS;
     final_fitness_ = gbest_.fitness;
     exec_time_ = exec_time_ / 1000.0f; // Convert to seconds
+    
+    extractResults(X, U, dt);
 
     results_valid_ = true;
     configured_ = true;
-    
-    if (verbose_) {
-        std::cout << "Optimization completed!" << std::endl;
-        std::cout << "Final fitness: " << final_fitness_ << std::endl;
-        std::cout << "Execution time: " << exec_time_ << " seconds" << std::endl;
-    }
     
     // Stop timing
     handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
@@ -655,6 +622,10 @@ bool PSOOptimizer::optimize(casadi::DM& X, casadi::DM& U, casadi::DM& dt) {
     handleCudaError(cudaEventElapsedTime(&temp_time, start_event_, stop_event_), __FILE__, __LINE__);
     setup_time_ += temp_time; // Accumulate
     setup_time_ /= 1000.0f; // Convert to seconds
+
+    if (verbose_) {
+        printResults();
+    }
 
     return true;
 }
@@ -666,9 +637,9 @@ void PSOOptimizer::extractResults(casadi::DM& X, casadi::DM& U, casadi::DM& dt) 
        (dt.size1() != N_STEPS || dt.size2() != 1)){
         std::cerr << "Warning: Output matrices have incorrect dimensions. Resizing..." << std::endl;
         std::cerr << "Expected dimensions | Given dimensions: " 
-                  << "X: (" << n_states << ", " << N_STEPS + 1 << ") | " << X.size1() << ", " << X.size2() << "), "
-                  << "U: (" << n_controls << ", " << N_STEPS << ") | " << U.size1() << ", " << U.size2() << "), "
-                  << "dt: (1, " << N_STEPS << ") | " << dt.size1() << ", " << dt.size2() << ")" << std::endl;
+                  << "X: (" << n_states << ", " << N_STEPS + 1 << ") | (" << X.size1() << ", " << X.size2() << "), "
+                  << "U: (" << n_controls << ", " << N_STEPS << ") | (" << U.size1() << ", " << U.size2() << "), "
+                  << "dt: (" << N_STEPS << ", 1) | (" << dt.size1() << ", " << dt.size2() << ")" << std::endl;
         X.resize(n_states, N_STEPS + 1);
         U.resize(n_controls, N_STEPS);
         dt.resize(N_STEPS, 1);
@@ -691,9 +662,9 @@ void PSOOptimizer::extractResults(casadi::DM& X, casadi::DM& U, casadi::DM& dt) 
 
     for (int step = 0; step < N_STEPS; step++) {
         float controls[n_controls];
-        int torque_idx = TORQUE_IDX(step, 0);
         for (int axis = 0; axis < n_controls; axis++) {
-            controls[axis] = gbest_.position[torque_idx + axis];
+            controls[axis] = gbest_.position[TORQUE_IDX(step, axis)];
+            U(axis, step) = static_cast<double>(controls[axis]);
         }
         
         euler(current_state, controls, dt_opt_, next_state, &att_params_);
@@ -704,11 +675,7 @@ void PSOOptimizer::extractResults(casadi::DM& X, casadi::DM& U, casadi::DM& dt) 
             X(i, step + 1) = static_cast<double>(current_state[i]);
         }
 
-        for (int axis = 0; axis < n_controls; axis++) {
-            U(axis, step) = static_cast<double>(gbest_.position[torque_idx + axis]);
-        }
-
-        dt(step, 0) = dt_double;
+        dt(step) = dt_double;
     }
 }
 

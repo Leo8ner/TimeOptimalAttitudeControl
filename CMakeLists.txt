@@ -229,8 +229,8 @@ target_include_directories(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLU
 add_executable(PSOwithSerial src/serial/bangbang/symmetric/main_pso.cpp)
 
 # Link the executable to the libraries
-target_link_libraries(PSOwithSerial PRIVATE ${CASADI_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
-target_include_directories(PSOwithSerial PRIVATE ${CASADI_INCLUDE_DIR} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+target_link_libraries(PSOwithSerial PRIVATE ${CASADI_LIBRARIES} toac CUDA::cudart CUDA::curand) 
+target_include_directories(PSOwithSerial PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 
 # Uncomment and fix the parallel version when needed

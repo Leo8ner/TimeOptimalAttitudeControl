@@ -14,7 +14,6 @@
  * INCLUDES
  *============================================================================*/
 #include "test2.h"
-using ::erfinv;
 /*==============================================================================
  * CUDA CONSTANT MEMORY DECLARATIONS
  *============================================================================*/
@@ -302,7 +301,7 @@ __global__ void findBest(particle_gbest *gbest, float *aux, float *aux_pos, floa
  * PSO OPTIMIZER CLASS IMPLEMENTATION
  *============================================================================*/
 
-PSOOptimizer::PSOOptimizer(const double* initial_state, const double* target_state, bool verbose) 
+PSOOptimizer::PSOOptimizer(const std::vector<double>& initial_state, const std::vector<double>& target_state, bool verbose) 
     : configured_(false)
     , results_valid_(false)
     , max_iterations_(MAX_ITERA)
@@ -341,6 +340,13 @@ PSOOptimizer::PSOOptimizer(const double* initial_state, const double* target_sta
     att_params_.min_torque = -static_cast<float>(tau_max);
     att_params_.max_dt = static_cast<float>(dt_max);
     att_params_.min_dt = static_cast<float>(dt_min);
+
+    if (initial_state.size() != n_states || target_state.size() != n_states) {
+        std::cerr << "Error: Initial and target states must have exactly " << n_states << " elements: 4 quaternions and 3 angular velocities." << std::endl;
+        cleanup();
+        return;
+    }
+
     for (int i = 0; i < n_quat; i++) {
         att_params_.initial_quat[i] = static_cast<float>(initial_state[i]);
         att_params_.target_quat[i] = static_cast<float>(target_state[i]);
@@ -543,7 +549,7 @@ bool PSOOptimizer::initializeParticles() {
     return true;
 }
 
-bool PSOOptimizer::optimize(double* X, double* U, double* dt) {
+bool PSOOptimizer::optimize(std::vector<double>& X, std::vector<double>& U, std::vector<double>& dt) {
 
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
     
@@ -659,12 +665,23 @@ bool PSOOptimizer::optimize(double* X, double* U, double* dt) {
     return true;
 }
 
-void PSOOptimizer::extractResults(double* X, double* U, double* dt) {
+void PSOOptimizer::extractResults(std::vector<double>& X, std::vector<double>& U, std::vector<double>& dt) {
 
     double dt_double = static_cast<double>(dt_opt_);
 
     // Simulate trajectory using RK4 for high accuracy
     float current_state[n_states], next_state[n_states];
+
+    // Check output vector sizes
+    if (X.size() != n_states * (N_STEPS + 1)) {
+        X.resize(n_states * (N_STEPS + 1), 0.0);
+    }
+    if (U.size() != n_controls * N_STEPS) {
+        U.resize(n_controls * N_STEPS, 0.0);
+    }
+    if (dt.size() != N_STEPS) {
+        dt.resize(N_STEPS, 0.0);
+    }
     
     // Initialize with initial conditions
     for (int i = 0; i < n_quat; i++) {
@@ -769,9 +786,4 @@ bool PSOOptimizer::handleCudaError(cudaError_t err, const char* file, int line) 
         return false;
     }
     return true;
-}
-
-int main(int argc, char* argv[]) {
-    int result = mainish(argc, argv);
-    return result;
 }

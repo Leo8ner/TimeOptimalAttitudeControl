@@ -24,6 +24,13 @@
 #include <float.h>
 #include <vector>
 #include <memory>
+#include <iostream>
+#include <string>
+#include <tuple>
+#include <sstream>
+#include <fstream>
+#include <stdexcept>
+#include <filesystem>
 
 /*==============================================================================
  * EXTERNAL LIBRARY INCLUDES  
@@ -33,7 +40,6 @@
  * LOCAL INCLUDES
  *============================================================================*/
 #include "symmetric_spacecraft.h"
-#include "helper_functions.h"
 
 /*==============================================================================
  * PROBLEM CONFIGURATION CONSTANTS
@@ -231,7 +237,7 @@ public:
      * @param target_state Target state [w,x,y,z,wx,wy,wz] [unit quaternion, angular velocity]
      * @param verbose Enable progress output during optimization
      */
-    PSOOptimizer(const double* initial_state, const double* target_state, bool verbose = false);
+    PSOOptimizer(const std::vector<double>& initial_state, const std::vector<double>& target_state, bool verbose = false);
     
     /**
      * @brief Destructor - cleans up allocated memory
@@ -267,7 +273,7 @@ public:
      * @param[out] dt Time step durations (vector or 1 x N DM depending on formulation).
      * @return true if optimization completed successfully, false on error
      */
-    bool optimize(double* X, double* U, double* dt);
+    bool optimize(std::vector<double>& X, std::vector<double>& U, std::vector<double>& dt);
 
     /**
      * @brief Get summary statistics of the last optimization run.
@@ -377,7 +383,7 @@ private:
      * @param U Output control trajectory
      * @param dt Output time step vector
      */
-    void extractResults(double* X, double* U, double* dt);
+    void extractResults(std::vector<double>& X, std::vector<double>& U, std::vector<double>& dt);
     
     /**
      * @brief Validate that all required parameters have been set

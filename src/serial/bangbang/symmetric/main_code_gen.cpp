@@ -18,6 +18,9 @@ int main(int argc, char* argv[]) {
     }
     
     try {
+        
+        auto start = std::chrono::high_resolution_clock::now();
+
         // Parse command line arguments
         DM X_0, angles_0;
         std::tie(X_0, angles_0) = parseStateVector(argv[1]);
@@ -31,7 +34,6 @@ int main(int argc, char* argv[]) {
         extractInitialGuess(csv_data, X_guess, U_guess, dt_guess);
 
         // Start the timer
-        auto start = std::chrono::high_resolution_clock::now();
         Function solver = get_solver();
         
         // Constraints (can still use for other constraint values)
