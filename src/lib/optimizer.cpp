@@ -120,12 +120,6 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         opti.subject_to(opti.bounded(lb_U, U, ub_U));
         opti.subject_to(dt > 0);  
 
-        // opti.set_initial(dt, dt_guess);
-        // if (!csv_data.empty()) {
-        //     opti.set_initial(X, X_guess);
-        //     opti.set_initial(U, U_guess);
-        // }
-
         solver_opts = {
             {"tol", 1e-10},              // Main tolerance
             {"acceptable_tol", 1e-8},    // Acceptable tolerance
@@ -136,6 +130,64 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         // Set the objective function
         opti.minimize(T);
         opti.solver(plugin, plugin_opts, solver_opts);
+
+        solver = opti.to_function("solver",
+            {p_X0, p_Xf, X, U, dt},
+            {X, U, T, dt},
+            {"X0", "Xf", "X_guess", "U_guess", "dt_guess"},
+            {"X", "U", "T", "dt"}
+        );
+
+    } else if (plugin == "qpoases") {
+
+        // Define variables (similar to IPOPT approach)
+        X = opti.variable(n_states, n_stp + 1);
+        U = opti.variable(n_controls, n_stp);
+        dt = opti.variable(n_stp);
+        T = sum(dt);  // Total time        
+
+        // Dynamics constraints
+        MX X_kp1 = F({X(all,Slice(0, n_stp)), U, dt})[0];
+        opti.subject_to(X(all,Slice(1, n_stp+1)) == X_kp1);
+        
+        // Quaternion norm constraints
+        opti.subject_to(sum1(pow(X(Slice(0,4),all), 2)) == 1);
+        
+        // Boundary conditions
+        opti.subject_to(X(all,0) == p_X0);     // Initial state
+        opti.subject_to(X(all,n_stp) == p_Xf); // Final state
+
+        // Fixed time step constraint (if specified)
+        if (fixed_step) {
+            opti.subject_to(dt(Slice(0, n_stp - 1)) == dt(Slice(1, n_stp)));
+        }
+        
+        // Control and time constraints
+        opti.subject_to(opti.bounded(lb_U, U, ub_U));
+        opti.subject_to(dt > 0);  
+
+        // qpOASES-specific plugin options
+        plugin_opts = {
+            {"expand", true},
+        };
+
+        // qpOASES-specific solver options
+        solver_opts = {
+            //{"qpsol", "qrqp"},
+            // {"printLevel", "none"},           // Suppress output for real-time
+            // {"hessian_type", "posdef"},       // Assume positive definite Hessian
+            // {"hotstart", "yes"},              // Enable warm starting
+            // {"terminationTolerance", 1e-8},   // Solution tolerance
+            // {"boundTolerance", 1e-8},         // Bound feasibility tolerance
+            // {"boundRelaxation", 1e-8},        // Bound relaxation
+            // {"initialStatusBounds", "inactive"}, // Initial bound status
+            // {"numRefinementSteps", 2},        // Iterative refinement steps
+            // {"enableCholeskyRefactorisation", 1} // Enable Cholesky refactorization
+        };
+
+        // Set the objective function
+        opti.minimize(T);
+        opti.solver("scpgen", plugin_opts, solver_opts);
 
         solver = opti.to_function("solver",
             {p_X0, p_Xf, X, U, dt},

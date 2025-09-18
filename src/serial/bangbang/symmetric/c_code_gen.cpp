@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 
 int main(){
 
-    std::string plugin = "fatrop"; // Specify the solver plugin to use
+    std::string plugin = "qpoases"; // Specify the solver plugin to use
     bool fixed_step = true; // Use fixed step size for the integrator
     // Dynamics
     //Dynamics dyn; // Create an instance of the Dynamics class
@@ -40,7 +40,7 @@ int main(){
     std::string compile_command = "gcc -fPIC -shared -O3 " + 
         prefix_code + "solver.c -o " +
         prefix_lib + "lib_solver.so " +
-         "-lfatrop " + "-lipopt";
+         "-lfatrop " + "-lipopt" + " -lqpOASES -lcasadi";
     std::cout << compile_command << std::endl;
 
     int compile_flag = std::system(compile_command.c_str());

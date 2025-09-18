@@ -44,7 +44,7 @@ ImplicitDynamics::ImplicitDynamics(const std::string& plugin) {
     // Create integrator options
     SXDict dae = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
     Dict opts;
-    if (plugin == "ipopt") {
+    if (plugin == "ipopt" || plugin == "qpoases") {
         // opts["collocation_scheme"] = "legendre";
         // opts["interpolation_order"] = 3;
         // opts["simplify"] = true;
