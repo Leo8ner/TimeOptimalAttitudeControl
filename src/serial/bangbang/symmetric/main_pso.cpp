@@ -95,11 +95,14 @@ int main(int argc, char* argv[]) {
         double c1 = 2.0; // Cognitive weight
         double c2 = 1.0; // Social weight
 
-        initial_guess.setPSOParameters(250,w,c1,c2); // Set PSO parameters: iterations, particles, inertia, cognitive, social
+        initial_guess.setPSOParameters(100,w,c1,c2); // Set PSO parameters: iterations, particles, inertia, cognitive, social
         if(!initial_guess.optimize(X_guess, U_guess, dt_guess)) {
             std::cerr << "Error: PSO initial guess optimization failed." << std::endl;
             return -1;
         }
+
+        // DMDict PSOresults = {{"X", X_guess}, {"U", U_guess}, {"T", sum(dt_guess)}, {"dt", dt_guess}};
+        // processResults(PSOresults, angles_0, angles_f);
 
         Function solver = get_solver();
         
@@ -110,14 +113,11 @@ int main(int argc, char* argv[]) {
                          {"dt_guess", dt_guess}};
         DMDict result = solver(inputs);
 
-        DMDict PSOresults = {{"X", X_guess}, {"U", U_guess}, {"T", dt_guess.sum1(0)}, {"dt", dt_guess}};
-
         // Stop the timer
         auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
         std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
 
-        processResults(PSOresults, angles_0, angles_f);
         processResults(result, angles_0, angles_f);
 
         std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;

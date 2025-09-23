@@ -166,28 +166,24 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         opti.subject_to(opti.bounded(lb_U, U, ub_U));
         opti.subject_to(dt > 0);  
 
+    Dict qpsol_opts{
+        {"solver", "ipopt"},
+    };
         // qpOASES-specific plugin options
-        plugin_opts = {
-            {"expand", true},
-        };
+   plugin_opts = {
+        {"qpsol", "nlpsol"},                  // QP solver
+        {"qpsol_options", qpsol_opts},       // Use qpOASES
+        //{"structure_detection", "auto"},
+    };
 
-        // qpOASES-specific solver options
-        solver_opts = {
-            //{"qpsol", "qrqp"},
-            // {"printLevel", "none"},           // Suppress output for real-time
-            // {"hessian_type", "posdef"},       // Assume positive definite Hessian
-            // {"hotstart", "yes"},              // Enable warm starting
-            // {"terminationTolerance", 1e-8},   // Solution tolerance
-            // {"boundTolerance", 1e-8},         // Bound feasibility tolerance
-            // {"boundRelaxation", 1e-8},        // Bound relaxation
-            // {"initialStatusBounds", "inactive"}, // Initial bound status
-            // {"numRefinementSteps", 2},        // Iterative refinement steps
-            // {"enableCholeskyRefactorisation", 1} // Enable Cholesky refactorization
-        };
+    solver_opts = {
+        //{"nlpsol", "fatrop"},                  // QP solver
+        // {"codegen", true},                   // Enable code generation
 
+    };
         // Set the objective function
         opti.minimize(T);
-        opti.solver("scpgen", plugin_opts, solver_opts);
+        opti.solver("sqpmethod", plugin_opts, solver_opts);
 
         solver = opti.to_function("solver",
             {p_X0, p_Xf, X, U, dt},

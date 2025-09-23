@@ -470,6 +470,13 @@ bool PSOOptimizer::initializeParticles() {
         std::cerr << "Failed to allocate particle arrays" << std::endl;
         return false;
     }
+
+    // Generate LHS samples
+    float** lhs_samples = new float*[num_particles_];
+    for (int i = 0; i < num_particles_; i++) {
+        lhs_samples[i] = new float[DIMENSIONS];
+    }
+    generateLHSSamples(lhs_samples);
     
     // Initialize global best
     gbest_.fitness = -FLT_MAX;
@@ -482,8 +489,8 @@ bool PSOOptimizer::initializeParticles() {
             int idx = PARTICLE_POS_IDX(i, dim);
             float torque_range = att_params_.max_torque - att_params_.min_torque;
             
-            particles_->position[idx] = RND() * torque_range + att_params_.min_torque;
-            particles_->velocity[idx] = (RND() - 0.5f) * 2.0f * max_v_torque_;
+            particles_->position[idx] = lhs_samples[i][dim] * torque_range + att_params_.min_torque;
+            particles_->velocity[idx] = (lhs_samples[i][dim] - 0.5f) * 2.0f * max_v_torque_;
             particles_->pbest_pos[idx] = particles_->position[idx];
         }
         
@@ -491,8 +498,8 @@ bool PSOOptimizer::initializeParticles() {
         int dt_idx = PARTICLE_POS_IDX(i, DT_IDX);
         float dt_range = att_params_.max_dt - att_params_.min_dt;
         
-        particles_->position[dt_idx] = RND() * dt_range + att_params_.min_dt;
-        particles_->velocity[dt_idx] = (RND() - 0.5f) * 2.0f * max_v_dt_;
+        particles_->position[dt_idx] = lhs_samples[i][DT_IDX] * dt_range + att_params_.min_dt;
+        particles_->velocity[dt_idx] = (lhs_samples[i][DT_IDX] - 0.5f) * 2.0f * max_v_dt_;
         particles_->pbest_pos[dt_idx] = particles_->position[dt_idx];
         
         // Evaluate initial fitness
@@ -513,6 +520,35 @@ bool PSOOptimizer::initializeParticles() {
     }
     
     return true;
+}
+
+/**
+ * Generate Latin Hypercube Samples for particle initialization
+ * @param samples Output matrix [num_particles_][DIMENSIONS]
+ */
+void PSOOptimizer::generateLHSSamples(float** samples) {
+    // Generate LHS samples in [0,1] for each dimension
+    for (int dim = 0; dim < DIMENSIONS; dim++) {
+        std::vector<float> intervals(num_particles_);
+        
+        // Create stratified intervals
+        for (int i = 0; i < num_particles_; i++) {
+            float interval_start = static_cast<float>(i) / num_particles_;
+            float interval_width = 1.0f / num_particles_;
+            intervals[i] = interval_start + (rand() / static_cast<float>(RAND_MAX)) * interval_width;
+        }
+        
+        // Shuffle to break correlations
+        for (int i = num_particles_ - 1; i > 0; i--) {
+            int j = rand() % (i + 1);
+            std::swap(intervals[i], intervals[j]);
+        }
+        
+        // Assign to samples matrix
+        for (int i = 0; i < num_particles_; i++) {
+            samples[i][dim] = intervals[i];
+        }
+    }
 }
 
 bool PSOOptimizer::optimize(casadi::DM& X, casadi::DM& U, casadi::DM& dt) {

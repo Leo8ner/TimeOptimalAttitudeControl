@@ -149,42 +149,42 @@ void Optimizer::extractInitialGuess() {
 
 // Constructor implementation
 BatchDynamics::BatchDynamics() {
-    SX X = SX::vertcat({SX::sym("q", 4, n_stp), SX::sym("w", 3, n_stp)});
-    SX U = SX::sym("tau", 3, n_stp);
-    SX dt = SX::sym("dt", n_stp);
+    MX X = MX::vertcat({MX::sym("q", 4, n_stp), MX::sym("w", 3, n_stp)});
+    MX U = MX::sym("tau", 3, n_stp);
+    MX dt = MX::sym("dt", n_stp);
     
-    SX q = X(Slice(0, 4), all);
-    SX w = X(Slice(4, 7), all);
+    MX q = X(Slice(0, 4), all);
+    MX w = X(Slice(4, 7), all);
     
     // Compute quaternion derivatives for all time steps
-    SX q_dot = SX::zeros(4, n_stp);
+    MX q_dot = MX::zeros(4, n_stp);
     for (int i = 0; i < n_stp; i++) {
-        SX w_i = w(all, i);
-        SX S_i = skew4(w_i);
-        q_dot(all, i) = 0.5 * SX::mtimes(S_i, q(all, i));
+        MX w_i = w(all, i);
+        MX S_i = skew4(w_i);
+        q_dot(all, i) = 0.5 * MX::mtimes(S_i, q(all, i));
     }
     
     // Inertia matrices
-    SX I = SX::diag(SX::vertcat({i_x, i_y, i_z}));
-    SX I_inv = SX::diag(SX::vertcat({1.0/i_x, 1.0/i_y, 1.0/i_z}));
+    MX I = MX::diag(MX::vertcat({i_x, i_y, i_z}));
+    MX I_inv = MX::diag(MX::vertcat({1.0/i_x, 1.0/i_y, 1.0/i_z}));
     
     // Compute angular velocity derivatives for all time steps
-    SX w_dot = SX::zeros(3, n_stp);
+    MX w_dot = MX::zeros(3, n_stp);
     for (int i = 0; i < n_stp; i++) {
-        SX w_i = w(all, i);
-        SX U_i = U(all, i);
-        SX Iw = SX::mtimes(I, w_i);
-        w_dot(all, i) = SX::mtimes(I_inv, (U_i - cross(w_i, Iw)));
+        MX w_i = w(all, i);
+        MX U_i = U(all, i);
+        MX Iw = MX::mtimes(I, w_i);
+        w_dot(all, i) = MX::mtimes(I_inv, (U_i - cross(w_i, Iw)));
     }
     
-    SX X_dot = SX::vertcat({q_dot, w_dot});
+    MX X_dot = MX::vertcat({q_dot, w_dot});
     
     // Apply RK4 integration for each time step
-    SX X_next = SX::zeros(7, n_stp);
+    MX X_next = MX::zeros(7, n_stp);
     for (int i = 0; i < n_stp; i++) {
-        SX X_i = X(all, i);
-        SX X_dot_i = X_dot(all, i);
-        SX dt_i = dt(i);
+        MX X_i = X(all, i);
+        MX X_dot_i = X_dot(all, i);
+        MX dt_i = dt(i);
         X_next(all, i) = rk4(X_dot_i, X_i, dt_i);
     }
     

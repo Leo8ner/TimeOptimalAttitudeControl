@@ -13,7 +13,7 @@ using namespace casadi;
 
 class ExplicitDynamics {
 
-    SX X, U, dt;
+    MX X, U, dt;
 
 public:
     Function F; 

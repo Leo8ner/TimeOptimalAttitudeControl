@@ -64,18 +64,18 @@ Function get_solver();
 /**
  * @brief Compute the skew-symmetric matrix for a 4D vector
  * @param w 4D vector (angular velocity)
- * @return Skew-symmetric matrix as SX object
+ * @return Skew-symmetric matrix as MX object
  */
-SX skew4(const SX& w);
+MX skew4(const MX& w);
 
 /**
  * @brief Perform one step of RK4 integration
- * @param x_dot Derivative function (as SX)
- * @param x Current state (as SX)
- * @param dt Time step (as SX)
- * @return Next state after time step dt (as SX)
+ * @param x_dot Derivative function (as MX)
+ * @param x Current state (as MX)
+ * @param dt Time step (as MX)
+ * @return Next state after time step dt (as MX)
  */
-SX rk4(const SX& x_dot, const SX& x, const SX& dt);
+MX rk4(const MX& x_dot, const MX& x, const MX& dt);
 
 /**
  * @brief Export trajectory data to CSV file

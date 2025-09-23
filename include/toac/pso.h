@@ -53,7 +53,7 @@
  *============================================================================*/
 
 /** @brief Maximum PSO iterations for optimization convergence */
-#define MAX_ITERA 250
+#define MAX_ITERA 100
 
 /** @brief Total number of particles in swarm */
 #define N_PARTICLES 640
@@ -373,6 +373,12 @@ private:
      * @return true on success, false on error
      */
     bool initializeParticles();
+
+    /**
+     * @brief Generate Latin Hypercube Samples for particle initialization
+     * @param samples Output matrix [num_particles_][DIMENSIONS]
+     */
+    void generateLHSSamples(float** samples);
     
     /**
      * @brief Extract results from optimization

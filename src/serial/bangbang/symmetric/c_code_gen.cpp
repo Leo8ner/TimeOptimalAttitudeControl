@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 
 int main(){
 
-    std::string plugin = "qpoases"; // Specify the solver plugin to use
+    std::string plugin = "fatrop"; // Specify the solver plugin to use
     bool fixed_step = true; // Use fixed step size for the integrator
     // Dynamics
     //Dynamics dyn; // Create an instance of the Dynamics class

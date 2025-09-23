@@ -4,45 +4,45 @@ using namespace casadi;
 
 // Constructor implementation
 ExplicitDynamics::ExplicitDynamics() {
-    X = SX::vertcat({SX::sym("q", 4), SX::sym("w", 3)});
-    U = SX::sym("tau", 3);
-    dt = SX::sym("dt");
+    X = MX::vertcat({MX::sym("q", 4), MX::sym("w", 3)});
+    U = MX::sym("tau", 3);
+    dt = MX::sym("dt");
 
-    SX q = X(Slice(0, 4));
-    SX w = X(Slice(4, 7));
+    MX q = X(Slice(0, 4));
+    MX w = X(Slice(4, 7));
 
-    SX S = skew4(w);
-    SX q_dot = 0.5 * SX::mtimes(S, q);
+    MX S = skew4(w);
+    MX q_dot = 0.5 * MX::mtimes(S, q);
 
-    SX I = SX::diag(SX::vertcat({i_x, i_y, i_z}));
-    SX I_inv = SX::diag(SX::vertcat({1.0/i_x, 1.0/i_y, 1.0/i_z}));
-    SX w_dot = SX::mtimes(I_inv, (U - cross(w, SX::mtimes(I, w))));
+    MX I = MX::diag(MX::vertcat({i_x, i_y, i_z}));
+    MX I_inv = MX::diag(MX::vertcat({1.0/i_x, 1.0/i_y, 1.0/i_z}));
+    MX w_dot = MX::mtimes(I_inv, (U - cross(w, MX::mtimes(I, w))));
 
-    SX X_dot = SX::vertcat({q_dot, w_dot});
-    SX X_next = rk4(X_dot, X, dt);
+    MX X_dot = MX::vertcat({q_dot, w_dot});
+    MX X_next = rk4(X_dot, X, dt);
     F = Function("F", {X, U, dt}, {X_next});
 
 }
 
 ImplicitDynamics::ImplicitDynamics(const std::string& plugin) {
-    SX X = SX::vertcat({SX::sym("q", 4), SX::sym("w", 3)});
-    SX U = SX::sym("tau", 3);
-    SX dt = SX::sym("dt");
+    MX X = MX::vertcat({MX::sym("q", 4), MX::sym("w", 3)});
+    MX U = MX::sym("tau", 3);
+    MX dt = MX::sym("dt");
 
-    SX q = X(Slice(0, 4));
-    SX w = X(Slice(4, 7));
+    MX q = X(Slice(0, 4));
+    MX w = X(Slice(4, 7));
 
-    SX S = skew4(w);
-    SX q_dot = 0.5 * SX::mtimes(S, q);
+    MX S = skew4(w);
+    MX q_dot = 0.5 * MX::mtimes(S, q);
 
-    SX I = SX::diag(SX::vertcat({i_x, i_y, i_z}));
-    SX I_inv = SX::diag(SX::vertcat({1.0/i_x, 1.0/i_y, 1.0/i_z}));
-    SX w_dot = SX::mtimes(I_inv, (U - cross(w, SX::mtimes(I, w))));
+    MX I = MX::diag(MX::vertcat({i_x, i_y, i_z}));
+    MX I_inv = MX::diag(MX::vertcat({1.0/i_x, 1.0/i_y, 1.0/i_z}));
+    MX w_dot = MX::mtimes(I_inv, (U - cross(w, MX::mtimes(I, w))));
 
-    SX X_dot = SX::vertcat({q_dot, w_dot});
+    MX X_dot = MX::vertcat({q_dot, w_dot});
 
     // Create integrator options
-    SXDict dae = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
+    MXDict dae = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
     Dict opts;
     if (plugin == "ipopt" || plugin == "qpoases") {
         // opts["collocation_scheme"] = "legendre";
@@ -50,7 +50,7 @@ ImplicitDynamics::ImplicitDynamics(const std::string& plugin) {
         // opts["simplify"] = true;
         // opts["rootfinder"] = "fast_newton";
         // Function f = integrator("f", "collocation", dae, opts);
-        SX X_next = rk4(X_dot, X, dt);
+        MX X_next = rk4(X_dot, X, dt);
         Function f = Function("F", {X, U, dt}, {X_next});
         F = f.map(n_stp, "unroll");
 
@@ -60,7 +60,7 @@ ImplicitDynamics::ImplicitDynamics(const std::string& plugin) {
         // opts["simplify"] = true;
         // opts["rootfinder"] = "fast_newton";
         // Function f = integrator("f", "rk", dae, opts);
-        SX X_next = rk4(X_dot, X, dt);
+        MX X_next = rk4(X_dot, X, dt);
         F = Function("F", {X, U, dt}, {X_next});
     } else {
         throw std::invalid_argument("Unsupported solver type: " + plugin);
