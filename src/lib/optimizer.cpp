@@ -2,9 +2,12 @@
 
 using namespace casadi;
 
-Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::string& plugin, 
+Optimizer::Optimizer(const Function& dyn, const std::string& plugin, 
                      bool fixed_step) :
-    F(dyn), lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt) {
+    F(dyn), lb_dt(dt_min), ub_dt(dt_max) {
+
+    lb_U = DM::vertcat({-tau_max, -tau_max, -tau_max});             // Lower bound for torque
+    ub_U = DM::vertcat({ tau_max,  tau_max,  tau_max});             // Upper bound for torque
 
     // Parameters
     p_X0 = opti.parameter(n_states);           // Parameter for initial state
@@ -12,15 +15,7 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
 
     Dict plugin_opts{}, solver_opts{};
 
-    // // Initial guesses
-    // if (!csv_data.empty()) {
-    //     extractInitialGuess(csv_data, X_guess, U_guess, dt_guess);
-    // } else {
-    //     // X_guess = stateInterpolator(X_0, X_f, n_stp + 1); // Default initial guess for states
-    //     // U_guess = inputInterpolator(X_0(Slice(1,4)), X_f(Slice(1,4)), n_stp);   // Default initial guess for controls
-    //     dt_guess = DM::repmat(dt_0, 1, n_stp);     // Default initial guess for time steps
-    //     std::cout << "Using 0 as initial guess for states and controls." << std::endl;
-    // }
+
     
     if (plugin == "fatrop") {
         
@@ -120,10 +115,16 @@ Optimizer::Optimizer(const Function& dyn, const Constraints& cons, const std::st
         opti.subject_to(opti.bounded(lb_U, U, ub_U));
         opti.subject_to(dt > 0);  
 
+        // Solver configuration
+        plugin_opts = {
+            {"expand", true},
+        };
         solver_opts = {
-            {"tol", 1e-10},              // Main tolerance
-            {"acceptable_tol", 1e-8},    // Acceptable tolerance
-            {"constr_viol_tol", 1e-6}, // Constraint violation tolerance
+            {"print_level", 0},
+            //{"tol", 1e-10},              // Main tolerance
+            //{"acceptable_tol", 1e-8},    // Acceptable tolerance
+            //{"constr_viol_tol", 1e-6}, // Constraint violation tolerance
+            //{"hessian_approximation", "limited-memory"}, // Use limited-memory approximation
 
         };
 

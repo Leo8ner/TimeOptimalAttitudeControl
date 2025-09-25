@@ -129,7 +129,6 @@ endif()
 add_library(toac STATIC 
             src/lib/optimizer.cpp 
             src/lib/dynamics.cpp 
-            src/lib/constraints.cpp 
             src/lib/cudaRK4.cu
             src/lib/CustomCallback.cpp
             src/lib/CUDAoptimizer.cpp
@@ -141,7 +140,6 @@ add_library(toac STATIC
 add_library(toac_shared SHARED 
             src/lib/optimizer.cpp 
             src/lib/dynamics.cpp 
-            src/lib/constraints.cpp 
             src/lib/cudaRK4.cu
             src/lib/CustomCallback.cpp
             src/lib/CUDAoptimizer.cpp

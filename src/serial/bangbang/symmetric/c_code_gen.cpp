@@ -3,7 +3,6 @@
 #include <filesystem>
 #include <casadi/casadi.hpp>
 #include <toac/dynamics.h>
-#include <toac/constraints.h>
 #include <toac/optimizer.h>
 
 
@@ -14,14 +13,12 @@ int main(){
 
     std::string plugin = "fatrop"; // Specify the solver plugin to use
     bool fixed_step = true; // Use fixed step size for the integrator
+
     // Dynamics
-    //Dynamics dyn; // Create an instance of the Dynamics class
-    ImplicitDynamics dyn(plugin); // Create an instance of the DynCvodes class
-    // Constraints
-    Constraints cons; // Create an instance of the Constraints class
+    Dynamics dyn(plugin); // Create an instance of the Dynamics class
 
     // Solver
-    Optimizer opti(dyn.F, cons, plugin, fixed_step);     // Create an instance of the Optimizer class
+    Optimizer opti(dyn.F, plugin, fixed_step);     // Create an instance of the Optimizer class
 
     // options for c-code auto generation
     Dict opts = Dict();
@@ -39,8 +36,7 @@ int main(){
     std::string prefix_lib = fs::current_path().parent_path().string() + "/build/";
     std::string compile_command = "gcc -fPIC -shared -O3 " + 
         prefix_code + "solver.c -o " +
-        prefix_lib + "lib_solver.so " +
-         "-lfatrop " + "-lipopt" + " -lqpOASES -lcasadi";
+        prefix_lib + "lib_solver.so -lfatrop -lipopt";
     std::cout << compile_command << std::endl;
 
     int compile_flag = std::system(compile_command.c_str());

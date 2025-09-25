@@ -3,7 +3,6 @@
 
 #include <casadi/casadi.hpp>
 #include <toac/symmetric_spacecraft.h>
-#include <toac/constraints.h>
 #include <toac/helper_functions.h>
 
 using namespace casadi;
@@ -22,7 +21,7 @@ class Optimizer {
 public:
 
     Function solver; // Solver function
-    Optimizer(const Function& dyn, const Constraints& cons, const std::string& plugin = "ipopt", 
+    Optimizer(const Function& dyn, const std::string& plugin = "ipopt", 
                bool fixed_step = true);
 };
 

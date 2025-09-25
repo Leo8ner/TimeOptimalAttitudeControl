@@ -1,11 +1,6 @@
-#include <casadi/casadi.hpp>
 #include <toac/cuda_optimizer.h>
-#include <toac/constraints.h>
 #include <toac/casadi_callback.h>
-#include <iostream>
-#include <chrono>
 #include <toac/helper_functions.h>
-#include <cstdlib>
 
 using namespace casadi;
 
@@ -58,33 +53,34 @@ int main(int argc, char* argv[]) {
     }
     
     try {
-        // Parse command line arguments
+        // Start the timer
+        // This is used to measure the time taken by the optimization process
+        auto start = std::chrono::high_resolution_clock::now();
 
+        // Parse command line arguments
         DM X_0, angles_0;
         std::tie(X_0, angles_0) = parseStateVector(argv[1]);
         DM X_f, angles_f;
         std::tie(X_f, angles_f) = parseStateVector(argv[2]);
 
-        std::tie(X_0, X_f) = parseInput(argv[1], argv[2]);
-        // Start the timer
-        // This is used to measure the time taken by the optimization process
-        auto start = std::chrono::high_resolution_clock::now();
-
-        // Constraints
-        Constraints cons; // Create an instance of the Constraints class
+        DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
+        std::string csv_data = "../output/initial_guess.csv"; // Path to the CSV file for initial guess
+        extractInitialGuess(csv_data, X_guess, U_guess, dt_guess);
 
         //DynamicsCallback callback("F");
         //Function dyn = callback; // Create an instance of the optimized dynamics integrator
         Function dyn = external("F", "libtoac_shared.so");
-        //std::cout << dyn;
         //BatchDynamics batch_dyn; // Create an instance of the BatchDynamics class
 
         //test_dynamics_and_jacobian(dyn);
         //Optimizer opti(batch_dyn.F, cons); // Create an instance of the optimizer class
-        Optimizer opti(dyn, cons); // Create an instance of the optimizer class
+        Optimizer opti(dyn); // Create an instance of the optimizer class
 
         // Call the solver with parsed inputs
-        DMDict inputs = {{"X0", X_0}, {"Xf", X_f}};
+        DMDict inputs = {{"X0", X_0}, {"Xf", X_f}, 
+                         {"X_guess", X_guess}, 
+                         {"U_guess", U_guess}, 
+                         {"dt_guess", dt_guess}};
         DMDict result = opti.solver(inputs);
         
         // Stop the timer
@@ -92,6 +88,7 @@ int main(int argc, char* argv[]) {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
         
         std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
+        std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;
 
         // Process and display results
         processResults(result, angles_0, angles_f);

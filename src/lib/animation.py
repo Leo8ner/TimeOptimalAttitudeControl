@@ -297,7 +297,7 @@ class SpacecraftAnimator:
     def setup_pause_button(self):
         """Setup pause/resume button"""
         # Create button axes (position: left, bottom, width, height)
-        button_ax = plt.axes([0.1, 0.5, 0.1, 0.04])
+        button_ax = plt.axes([0.1, 0.4, 0.1, 0.04])
         self.pause_button = Button(button_ax, 'Pause')
         self.pause_button.on_clicked(self.toggle_pause)
 
@@ -315,7 +315,7 @@ class SpacecraftAnimator:
     def setup_frame_slider(self):
         """Setup frame control slider"""
         # Create slider axes (position: left, bottom, width, height)
-        slider_ax = plt.axes([0.05, 0.4, 0.2, 0.03])
+        slider_ax = plt.axes([0.05, 0.35, 0.2, 0.03])
         self.frame_slider = Slider(
             slider_ax, 'Step', 0, len(self.time_data)-1, 
             valinit=0, valfmt='%d', valstep=1
@@ -494,17 +494,9 @@ Ix: {self.Ix:.3f}  Iy: {self.Iy:.3f}  Iz: {self.Iz:.3f}"""
 
 def main(csv_file, Ix, Iy, Iz):
     """Main function to run the spacecraft animator"""
-    # print("🚀 Spacecraft Attitude Animation")
-    # print("=" * 40)
     
     # Create animator instance
     animator = SpacecraftAnimator(csv_file, Ix, Iy, Iz)
-    
-    # Print controls
-    # print("\nControls:")
-    # print("- Close window to stop animation")
-    # print("- Animation will loop automatically")
-    # print("- All trajectory data is displayed in real-time")
     
     # Show animation
     animator.show()

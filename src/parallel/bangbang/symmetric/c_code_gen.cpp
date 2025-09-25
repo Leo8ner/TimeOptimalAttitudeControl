@@ -3,7 +3,6 @@
 #include <filesystem>
 #include <casadi/casadi.hpp>
 #include <toac/casadi_callback.h>
-#include <toac/constraints.h>
 #include <toac/cuda_optimizer.h>
 
 using namespace casadi;
@@ -18,12 +17,10 @@ int main(){
     // Function dyn = callback;
 
     Function dyn = external("F", "libtoac_shared.so");
-    // Constraints
-    Constraints cons; // Create an instance of the Constraints class
+
     // Solver
     std::string plugin = "ipopt"; // Specify the solver plugin to use
-    std::string csv_data = "../output/initial_guess.csv"; // Path to the CSV file for initial guess
-    Optimizer opti(dyn, cons, csv_data);     // Create an instance of the
+    Optimizer opti(dyn);     // Create an instance of the
     // options for c-code auto generation
     Dict opts = Dict();
     opts["cpp"] = false;

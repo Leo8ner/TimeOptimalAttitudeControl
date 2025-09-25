@@ -11,21 +11,11 @@
 
 using namespace casadi;
 
-class ExplicitDynamics {
-
-    MX X, U, dt;
-
-public:
-    Function F; 
-
-    ExplicitDynamics();
-};
-
-struct ImplicitDynamics {
+struct Dynamics {
     
     Function F; 
 
-    ImplicitDynamics(const std::string& plugin = "ipopt");
+    Dynamics(const std::string& plugin = "ipopt");
 };
 
 #endif // DYNAMICS_H

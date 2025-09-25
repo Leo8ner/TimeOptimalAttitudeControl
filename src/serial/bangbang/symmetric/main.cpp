@@ -1,7 +1,6 @@
 #include <casadi/casadi.hpp>
 #include <toac/optimizer.h>
 #include <toac/dynamics.h>
-#include <toac/constraints.h>
 #include <iostream>
 #include <chrono>
 #include <toac/helper_functions.h>
@@ -13,11 +12,15 @@ using namespace casadi;
 int main(int argc, char* argv[]) {
     // Check command line arguments
     if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " \"phi_i,theta_i,psi_i,wx_i,wy_i,wz_i\" \"phi_f,theta_f,psi_f,wx_f,wy_f,wz_f\"" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " \"phi_i,theta_i,psi_i,wx_i,wy_i,wz_i\" \"phi_f,theta_f,psi_f,wx_f,wy_f,wz_f\" all in degrees" << std::endl;
         return 1;
     }
     
     try {
+
+        // Start the timer
+        // This is used to measure the time taken by the optimization process
+        auto start = std::chrono::high_resolution_clock::now();
         // Parse command line arguments
 
         DM X_0, angles_0;
@@ -29,17 +32,14 @@ int main(int argc, char* argv[]) {
 
         extractInitialGuess("../output/initial_guess.csv", X_guess, U_guess, dt_guess);
 
-        // Start the timer
-        // This is used to measure the time taken by the optimization process
-        auto start = std::chrono::high_resolution_clock::now();
+        std::string plugin = "fatrop"; // Specify the solver plugin to use
+        bool fixed_step = true; // Use fixed step size for the integrator
 
         // Dynamics
-        ImplicitDynamics dyn; // Create an instance of the dynamics class
+        Dynamics dyn(plugin); // Create an instance of the Dynamics class
 
-        // Constraints
-        Constraints cons; // Create an instance of the Constraints class
-
-        Optimizer opti(dyn.F, cons); // Create an instance of the optimizer class
+        // Solver
+        Optimizer opti(dyn.F, plugin, fixed_step);     // Create an instance of the Optimizer class
 
         // Call the solver with parsed inputs
         DMDict inputs = {{"X0", X_0}, {"Xf", X_f}, 

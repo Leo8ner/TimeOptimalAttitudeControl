@@ -1,7 +1,6 @@
 #include <casadi/casadi.hpp>
 #include <toac/optimizer.h>
 #include <toac/dynamics.h>
-#include <toac/constraints.h>
 #include <iostream>
 #include <chrono>
 #include <toac/helper_functions.h>
@@ -28,16 +27,11 @@ int main(int argc, char* argv[]) {
         std::tie(X_f, angles_f) = parseStateVector(argv[2]);
 
         DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
-
         std::string csv_data = "../output/initial_guess.csv"; // Path to the CSV file for initial guess
-
         extractInitialGuess(csv_data, X_guess, U_guess, dt_guess);
 
         // Start the timer
         Function solver = get_solver();
-        
-        // Constraints (can still use for other constraint values)
-        Constraints cons;
         
         
         // Call the solver with parsed inputs
@@ -51,6 +45,8 @@ int main(int argc, char* argv[]) {
         auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
         std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
+
+        std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;
 
         processResults(result, angles_0, angles_f);
         

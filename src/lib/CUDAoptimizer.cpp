@@ -2,11 +2,12 @@
 
 using namespace casadi;
 
-Optimizer::Optimizer(const Function &dyn, const Constraints &cons, const std::string& csv_data) : F(dyn), lb_U(cons.lb_U), ub_U(cons.ub_U), lb_dt(cons.lb_dt), ub_dt(cons.ub_dt),
-                                                                     csv_file(csv_data) 
+Optimizer::Optimizer(const Function &dyn) : F(dyn), lb_dt(dt_min), ub_dt(dt_max)
+                                                                     
 {
-
-        setupOptimizationProblem();
+    lb_U = DM::vertcat({-tau_max, -tau_max, -tau_max});             // Lower bound for torque
+    ub_U = DM::vertcat({ tau_max,  tau_max,  tau_max});             // Upper bound for torque
+    setupOptimizationProblem();
 }
 
 void Optimizer::setupOptimizationProblem()
@@ -37,19 +38,6 @@ void Optimizer::setupOptimizationProblem()
         MX X_next_expected = X(Slice(), Slice(1, n_stp + 1));
         opti.subject_to(X_next_expected == X_next_computed);
         opti.subject_to(dt(Slice(0, n_stp - 1)) == dt(Slice(1, n_stp)));
-        
-        // Initial guess
-        if (!csv_file.empty()) {
-            extractInitialGuess();
-            opti.set_initial(X, X_guess);
-            opti.set_initial(U, U_guess);
-        } else {
-            // Default initial guess
-            // X_guess = stateInterpolator(X_0, X_f, n_stp + 1);
-            // U_guess = inputInterpolator(X_0(Slice(1, 4)), X_f(Slice(1, 4)), n_stp);
-            dt_guess = DM::repmat(dt_0, 1, n_stp);
-        }
-        opti.set_initial(dt, dt_guess);
 
         // Objective
         T = sum(dt);
@@ -57,12 +45,11 @@ void Optimizer::setupOptimizationProblem()
 
         // Solver setup
         Dict plugin_opts{}, solver_opts{};
-        solver_opts["print_level"] = 5;
-        //solver_opts["max_iter"] = 1000;
-        solver_opts["tol"] = 1e-10;            // Main tolerance
-        solver_opts["acceptable_tol"] = 1e-6;  // Acceptable tolerance
-        solver_opts["constr_viol_tol"] = 1e-6; // Constraint violation tolerance
-        //solver_opts["jacobian_approximation"] = "finite-difference-values"; // Use sparse Jacobian approximation
+        solver_opts["print_level"] = 3;
+        // solver_opts["max_iter"] = 1000;
+        // solver_opts["tol"] = 1e-10;            // Main tolerance
+        // solver_opts["acceptable_tol"] = 1e-6;  // Acceptable tolerance
+        // solver_opts["jacobian_approximation"] = "finite-difference-values"; // Use sparse Jacobian approximation
         solver_opts["hessian_approximation"] = "limited-memory"; // Use limited-memory approximation
         plugin_opts["expand"] = true;
 
@@ -70,82 +57,12 @@ void Optimizer::setupOptimizationProblem()
         opti.solver("ipopt", plugin_opts, solver_opts);
 
         solver = opti.to_function("parsolver",
-                                  {p_X0, p_Xf},
-                                  {X, U, T, dt},
-                                  {"X0", "Xf"},
-                                  {"X", "U", "T", "dt"});
+            {p_X0, p_Xf, X, U, dt},
+            {X, U, T, dt},
+            {"X0", "Xf", "X_guess", "U_guess", "dt_guess"},
+            {"X", "U", "T", "dt"});
 }
 
-void Optimizer::extractInitialGuess() {
-    // Read CSV file
-    std::ifstream file(csv_file);
-    if (!file.is_open()) {
-        throw std::runtime_error("Could not open CSV file: " + csv_file);
-    }
-    
-    // Load file content
-    std::string csv_content((std::istreambuf_iterator<char>(file)), 
-                            std::istreambuf_iterator<char>());
-    file.close();
-    
-    // Parse CSV data with header detection
-    std::istringstream stream(csv_content);
-    std::string line;
-    std::vector<std::vector<double>> x_data, u_data, dt_data;
-    std::string current_section = "";
-    
-    while (std::getline(stream, line)) {
-        if (line.empty()) continue;
-        
-        // Check if line is a header
-        if (line == "X" || line == "U" || line == "T" || line == "dt") {
-            current_section = line;
-            continue;
-        }
-        
-        // Parse numeric data
-        std::vector<double> row;
-        std::istringstream line_stream(line);
-        std::string cell;
-        
-        while (std::getline(line_stream, cell, ',')) {
-            row.push_back(std::stod(cell));
-        }
-        
-        // Store data in appropriate section
-        if (current_section == "X") {
-            x_data.push_back(row);
-        } else if (current_section == "U") {
-            u_data.push_back(row);
-        } else if (current_section == "dt") {
-            dt_data.push_back(row);
-        }
-        // Skip "T" section as it's not needed
-    }
-    
-    // Extract X (rows 3-9, which are the last 7 rows)
-    int n_cols = x_data[0].size();
-    X_guess = DM::zeros(7, n_cols);
-    for (int i = 0; i < 7; i++) {
-        for (int j = 0; j < n_cols; j++) {
-            X_guess(i, j) = x_data[3 + i][j];  // Start from row 3
-        }
-    }
-    
-    // Extract U (all 3 rows)
-    U_guess = DM::zeros(3, n_cols-1);
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < n_cols-1; j++) {
-            U_guess(i, j) = u_data[i][j];
-        }
-    }
-    
-    // Extract dt (1 row)
-    dt_guess = DM::zeros(1, n_cols-1);
-    for (int j = 0; j < n_cols-1; j++) {
-        dt_guess(0, j) = dt_data[0][j];
-    }
-}
 
 // Constructor implementation
 BatchDynamics::BatchDynamics() {
