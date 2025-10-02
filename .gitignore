@@ -1,6 +1,10 @@
 # Prerequisites
 *.d
 
+# cgpops files
+*.m
+*.bin
+
 # Compiled Object files
 *.slo
 *.lo
