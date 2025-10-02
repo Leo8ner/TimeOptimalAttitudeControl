@@ -22,6 +22,11 @@ double q_max{1.0};
 double q_min{-1.0};
 double w_max{3.0};
 double w_min{-3.0};
+int n_states{7};
+int n_controls{3};
+double PI{3.141592653589793};
+double DEG{PI / 180.0};
+double RAD{180.0 / PI};
 
 #endif
 

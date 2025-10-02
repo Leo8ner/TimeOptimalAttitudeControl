@@ -27,7 +27,7 @@ template <class T> void MinTf::eq_def(T& lhs, T** x0, T** xf, T** q, T** t0, T**
 }
 template <class T> void QuatNormConstraint::eq_def(T& lhs, T* x, T* u, T& t, T* s, T* p)
 {
-    lhs = qo*qo + q1*q1 + q2*q2 + q3*q3 - 1.0;
+    lhs = qo*qo + q1*q1 + q2*q2 + q3*q3;
 }
 template <class T> void Q0Dot::eq_def(T& lhs, T* x, T* u, T& t, T* s, T* p)
 {

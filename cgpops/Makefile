@@ -16,7 +16,7 @@ CGPOPS_DIR = /home/leo8ner/cgpops
 
 CGPOPS_FUNC_DIR = $(CGPOPS_DIR)/src
 
-OBJS_GOV = cgpops_wrapper.o cgpops_main.o cgpops_gov.o
+OBJS_GOV = cgpops_wrapper.o cgpops_main.o cgpops_gov.o helper_functions.o
 
 _CGPOPS_OBJS = cgpopsClassFuncDef.o MatClasses.o ASCIItable.o Bicomplex.o HyperDual.o LGRClass.o cgpopsFuncDef.o NLPDerivativesHD.o NLPDerivativesBC.o NLPDerivativesCD.o cgpops_nlp.o cgpopsMeshRef.o cgpopsHamiltonianDef.o find_polynomial_roots_jenkins_traub.o polynomial.o OCPFunctions.o
 

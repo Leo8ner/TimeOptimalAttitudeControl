@@ -5,9 +5,12 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from scipy.spatial.transform import Rotation
 import sys
 from matplotlib.widgets import Button, Slider
+import re
+import os
+
 
 class SpacecraftAnimator:
-    def __init__(self, csv_file='../../output/trajectory.csv', Ix=1.0, Iy=1.0, Iz=1.0):
+    def __init__(self, matlab_file='cgpopsIPOPTSolutionBC.m', Ix=1.0, Iy=1.0, Iz=1.0, collocation_points=4):
         # Initialize data containers
         self.euler_angles = [[], [], []]  # φ, θ, ψ
         self.quaternions = [[], [], [], []]  # w, x, y, z
@@ -31,109 +34,110 @@ class SpacecraftAnimator:
         self.manual_control = False
 
         # Load data
-        self.load_data(csv_file)
-        
+        self.load_data(matlab_file)
+        # Downsample for real-time playback
+        self.downsample_data(collocation_points)
         # Create figure and setup
         self.setup_plot()
-        
-    def load_data(self, csv_file):
-        """Load trajectory data from CSV and inertia from header file"""
+
+    def load_data(self, matlab_file):
+        """Load trajectory data from MATLAB file"""
         try:
-            self.parse_csv_file(csv_file)
+            self.parse_matlab_file(matlab_file)
             # print(f"✓ Loaded trajectory data: {len(self.time_data)} points")
         except FileNotFoundError:
-            print(f"⚠ CSV file '{csv_file}' not found. Using sample data.")
-            self.generate_sample_data()
+            print(f"⚠ MATLAB file '{matlab_file}' not found.")
+            raise
         except Exception as e:
-            print(f"⚠ Error loading CSV: {e}. Using sample data.")
-            self.generate_sample_data()
-    
-    def parse_csv_file(self, filename):
-        """Parse the CSV file with the specified format"""
+            print(f"⚠ Error loading MATLAB file: {e}.")
+            raise
+
+    def parse_matlab_file(self, filename):
+        """Parse the MATLAB .m file directly"""
+
+        # Extract suffix from filename
+        name_without_ext = os.path.splitext(filename)[0]  # Remove .m
+        suffix = name_without_ext[-2:]  # Get last 2 characters
+        
         with open(filename, 'r') as f:
-            content = f.read().strip()
+            content = f.read()
         
-        lines = content.split('\n')
-        current_section = ''
+        # Extract total time
+        tf_match = re.search(rf'system{suffix}\.phase\(1\)\.tf\s*=\s*([\d.e+-]+);', content)
+        self.total_time = float(tf_match.group(1)) if tf_match else 0.0
         
-        # Initialize data containers
-        state_rows = []
-        control_rows = []
+        # Extract states x(1-7) with 201 points each
+        states = []
+        for i in range(1, 8):
+            pattern = rf'system{suffix}\.phase\(1\)\.x\({i}\)\.point\((\d+)\)\s*=\s*([-\d.e+-]+);'
+            matches = re.findall(pattern, content)
+            values = [float(val) for idx, val in sorted(matches, key=lambda x: int(x[0]))]
+            states.append(values)
         
-        for line in lines:
-            line = line.strip()
-            
-            # Check for section headers
-            if line == 'X':
-                current_section = 'states'
-                continue
-            elif line == 'U':
-                current_section = 'control'
-                continue
-            elif line == 'T':
-                current_section = 'time'
-                continue
-            elif line == 'dt':
-                current_section = 'dt'
-                continue
-            
-            # Parse data lines (check if line starts with a number)
-            if line and (line[0].isdigit() or line[0] == '-' or line[0] == '.'):
-                try:
-                    values = [float(v.strip()) for v in line.split(',')]
-                    
-                    if current_section == 'states':
-                        state_rows.append(values)
-                    elif current_section == 'control':
-                        control_rows.append(values)
-                    elif current_section == 'time':
-                        self.total_time = values[0]
-                    elif current_section == 'dt':
-                        # Generate time data from dt values
-                        time = 0
-                        self.time_data = []
-                        self.time_data.append(time)
-                        for dt in values:
-                            time += dt
-                            self.time_data.append(time)
-                            self.dt = dt
-                except ValueError:
-                    continue  # Skip lines that can't be parsed as numbers
+        # Extract controls u(1-3) with 201 points each
+        controls = []
+        for i in range(1, 4):
+            pattern = rf'system{suffix}\.phase\(1\)\.u\({i}\)\.point\((\d+)\)\s*=\s*([-\d.e+-]+);'
+            matches = re.findall(pattern, content)
+            values = [float(val) for idx, val in sorted(matches, key=lambda x: int(x[0]))]
+            controls.append(values)
         
-        # Now assign the parsed rows to the correct arrays
-        if len(state_rows) >= 10:
-            # Euler angles (rows 0-2)
-            self.euler_angles[0] = state_rows[0]  # φ (roll)
-            self.euler_angles[1] = state_rows[1]  # θ (pitch)  
-            self.euler_angles[2] = state_rows[2]  # ψ (yaw)
-            
-            # Quaternions (rows 3-6)
-            self.quaternions[0] = state_rows[3]  # w
-            self.quaternions[1] = state_rows[4]  # x
-            self.quaternions[2] = state_rows[5]  # y
-            self.quaternions[3] = state_rows[6]  # z
-            
-            # Angular rates (rows 7-9)
-            self.angular_rates[0] = state_rows[7]  # ωx
-            self.angular_rates[1] = state_rows[8]  # ωy
-            self.angular_rates[2] = state_rows[9]  # ωz
+        # Extract time points
+        pattern = rf'system{suffix}\.phase\(1\)\.t\.point\((\d+)\)\s*=\s*([-\d.e+-]+);'
+        matches = re.findall(pattern, content)
+        self.time_data = [float(val) for idx, val in sorted(matches, key=lambda x: int(x[0]))]
         
-        # Control inputs
-        if len(control_rows) >= 3:
-            self.control_inputs[0] = np.insert(control_rows[0], 0, 0.0)  # ux
-            self.control_inputs[1] = np.insert(control_rows[1], 0, 0.0)  # uy
-            self.control_inputs[2] = np.insert(control_rows[2], 0, 0.0)  # uz
+        # States from .m file: x(1-4) = quaternions [w,x,y,z], x(5-7) = rates [ωx,ωy,ωz]
+        quat_w, quat_x, quat_y, quat_z = states[0], states[1], states[2], states[3]
+        omega_x, omega_y, omega_z = states[4], states[5], states[6]
         
-        # Debug output
-        # print(f"Debug: Parsed {len(state_rows)} state rows")
-        # print(f"Debug: Parsed {len(control_rows)} control rows")
-        # print(f"Debug: Euler angles: {len(self.euler_angles[0])} points")
-        # print(f"Debug: Quaternions: {len(self.quaternions[0])} points") 
-        # print(f"Debug: Angular rates: {len(self.angular_rates[0])} points")
-        # print(f"Debug: Control inputs: {len(self.control_inputs[0])} points") 
-        # print(f"Debug: Time points: {len(self.time_data)}")
-        # print(f"Debug: Total time: {self.total_time}")
+        # Convert quaternions to Euler angles (degrees)
+        n_points = len(quat_w)
+        euler_angles = np.zeros((3, n_points))
         
+        for i in range(n_points):
+            quat = [quat_x[i], quat_y[i], quat_z[i], quat_w[i]]  # scipy order: [x,y,z,w]
+            rot = Rotation.from_quat(quat)
+            euler = rot.as_euler('XYZ', degrees=True)  # [roll, pitch, yaw]
+            euler_angles[:, i] = euler
+        
+        # Assign to class variables
+        self.euler_angles[0] = euler_angles[0, :].tolist()  # roll (φ)
+        self.euler_angles[1] = euler_angles[1, :].tolist()  # pitch (θ)
+        self.euler_angles[2] = euler_angles[2, :].tolist()  # yaw (ψ)
+        
+        self.quaternions[0] = quat_w    # w
+        self.quaternions[1] = quat_x    # x
+        self.quaternions[2] = quat_y    # y
+        self.quaternions[3] = quat_z    # z
+        
+        self.angular_rates[0] = omega_x  # ωx (rad/s)
+        self.angular_rates[1] = omega_y  # ωy (rad/s)
+        self.angular_rates[2] = omega_z  # ωz (rad/s)
+        
+        self.control_inputs[0] = controls[0]  # ux
+        self.control_inputs[1] = controls[1]  # uy
+        self.control_inputs[2] = controls[2]  # uz
+
+    def downsample_data(self, step=4):
+        """Downsample data by taking every nth point"""
+        indices = list(range(0, len(self.time_data), step))
+        
+        # Downsample all data arrays
+        self.euler_angles = [[angles[i] for i in indices] for angles in self.euler_angles]
+        self.quaternions = [[quat[i] for i in indices] for quat in self.quaternions]
+        self.angular_rates = [[rate[i] for i in indices] for rate in self.angular_rates]
+        self.control_inputs = [[control[i] for i in indices] for control in self.control_inputs]
+        
+        # Calculate dt before downsampling time
+        self.dt = self.time_data[step] if len(self.time_data) > step else self.time_data[-1]
+        
+        # Downsample time
+        self.time_data = [self.time_data[i] for i in indices]
+        
+        # print(f"✓ Downsampled from 201 to {len(self.time_data)} frames")
+        # print(f"✓ Frame dt = {self.dt:.4f}s for real-time playback")
+     
     def create_spacecraft_geometry(self):
         """Create spacecraft geometry based on inertia moments"""
         # Scale factors based on inertia ratios
@@ -489,7 +493,7 @@ Ix: {self.Ix:.3f}  Iy: {self.Iy:.3f}  Iz: {self.Iz:.3f}"""
     def save_animation(self, filename='spacecraft_animation.gif', fps=10):
         """Save animation as GIF"""
         if self.animation is None:
-            self.start_animation(realtime=True, repeat=False)
+            self.start_animation(interval=100, repeat=False)
         
         print(f"Saving animation to {filename}...")
         self.animation.save(filename, writer='pillow', fps=fps)
@@ -511,14 +515,14 @@ def main(csv_file, Ix, Iy, Iz):
 
 if __name__ == "__main__":
     if len(sys.argv) == 5:
-        main("../output/" + sys.argv[1], float(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4]))
+        main(sys.argv[1], float(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4]))
     elif len(sys.argv) == 2:
         print("⚠ Missing inertia moment arguments.")
         print("Usage: python animation.py trajectory.csv Ix Iy Iz")
         print("Using default values: Ix=1.0, Iy=1.0, Iz=1.0")
-        main("../output/" + sys.argv[1], 1.0, 1.0, 1.0)
+        main(sys.argv[1], 1.0, 1.0, 1.0)
     else:
         print("⚠ Missing arguments.")
         print("Usage: python animation.py trajectory.csv Ix Iy Iz")
         print("Using default values: Ix=1.0, Iy=1.0, Iz=1.0")
-        main("../../output/trajectory.csv", 1.0, 1.0, 1.0)
+        main("cgpopsIPOPTSolutionBC.m", 1.0, 1.0, 1.0)

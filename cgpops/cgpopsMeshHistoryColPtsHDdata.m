@@ -1,0 +1,56 @@
+%% cgpopsMeshHistoryColPtsHDdata.m
+
+
+cgpopsMeshHistoryColPtsHD(1,1) = 4;
+cgpopsMeshHistoryColPtsHD(1,2) = 4;
+cgpopsMeshHistoryColPtsHD(1,3) = 4;
+cgpopsMeshHistoryColPtsHD(1,4) = 4;
+cgpopsMeshHistoryColPtsHD(1,5) = 4;
+cgpopsMeshHistoryColPtsHD(1,6) = 4;
+cgpopsMeshHistoryColPtsHD(1,7) = 4;
+cgpopsMeshHistoryColPtsHD(1,8) = 4;
+cgpopsMeshHistoryColPtsHD(1,9) = 4;
+cgpopsMeshHistoryColPtsHD(1,10) = 4;
+cgpopsMeshHistoryColPtsHD(1,11) = 4;
+cgpopsMeshHistoryColPtsHD(1,12) = 4;
+cgpopsMeshHistoryColPtsHD(1,13) = 4;
+cgpopsMeshHistoryColPtsHD(1,14) = 4;
+cgpopsMeshHistoryColPtsHD(1,15) = 4;
+cgpopsMeshHistoryColPtsHD(1,16) = 4;
+cgpopsMeshHistoryColPtsHD(1,17) = 4;
+cgpopsMeshHistoryColPtsHD(1,18) = 4;
+cgpopsMeshHistoryColPtsHD(1,19) = 4;
+cgpopsMeshHistoryColPtsHD(1,20) = 4;
+cgpopsMeshHistoryColPtsHD(1,21) = 4;
+cgpopsMeshHistoryColPtsHD(1,22) = 4;
+cgpopsMeshHistoryColPtsHD(1,23) = 4;
+cgpopsMeshHistoryColPtsHD(1,24) = 4;
+cgpopsMeshHistoryColPtsHD(1,25) = 4;
+cgpopsMeshHistoryColPtsHD(1,26) = 4;
+cgpopsMeshHistoryColPtsHD(1,27) = 4;
+cgpopsMeshHistoryColPtsHD(1,28) = 4;
+cgpopsMeshHistoryColPtsHD(1,29) = 4;
+cgpopsMeshHistoryColPtsHD(1,30) = 4;
+cgpopsMeshHistoryColPtsHD(1,31) = 4;
+cgpopsMeshHistoryColPtsHD(1,32) = 4;
+cgpopsMeshHistoryColPtsHD(1,33) = 4;
+cgpopsMeshHistoryColPtsHD(1,34) = 4;
+cgpopsMeshHistoryColPtsHD(1,35) = 4;
+cgpopsMeshHistoryColPtsHD(1,36) = 4;
+cgpopsMeshHistoryColPtsHD(1,37) = 4;
+cgpopsMeshHistoryColPtsHD(1,38) = 4;
+cgpopsMeshHistoryColPtsHD(1,39) = 4;
+cgpopsMeshHistoryColPtsHD(1,40) = 4;
+cgpopsMeshHistoryColPtsHD(2,1) = 5;
+cgpopsMeshHistoryColPtsHD(2,2) = 5;
+cgpopsMeshHistoryColPtsHD(2,3) = 5;
+cgpopsMeshHistoryColPtsHD(2,4) = 5;
+cgpopsMeshHistoryColPtsHD(2,5) = 5;
+cgpopsMeshHistoryColPtsHD(2,6) = 5;
+cgpopsMeshHistoryColPtsHD(2,7) = 5;
+cgpopsMeshHistoryColPtsHD(2,8) = 5;
+cgpopsMeshHistoryColPtsHD(2,9) = 5;
+cgpopsMeshHistoryColPtsHD(2,10) = 5;
+cgpopsMeshHistoryColPtsHD(2,11) = 5;
+cgpopsMeshHistoryColPtsHD(2,12) = 5;
+

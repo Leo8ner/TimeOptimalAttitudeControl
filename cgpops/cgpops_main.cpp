@@ -8,7 +8,7 @@
 #include "cgpops_main.hpp"
 
 
-void cgpops_go(doubleMat& cgpopsResults)
+void cgpops_go(doubleMat& cgpopsResults, const std::vector<double>& initial_state, const std::vector<double>& final_state)
 {
     // Define Global Variables used to determine problem size
     PG      = 1;    // Number of phases in problem
@@ -55,13 +55,13 @@ void cgpops_go(doubleMat& cgpopsResults)
     double tfmin = T_min,               tfmax = T_max;          // minimum and maximum final times
 
     // Initial attitude (quaternion) - identity quaternion for initial rest
-    double q0_0 = 1.0, q1_0 = 0.0, q2_0 = 0.0, q3_0 = 0.0;
+    double q0_0 = initial_state[0], q1_0 = initial_state[1], q2_0 = initial_state[2], q3_0 = initial_state[3];
     // Final attitude (quaternion) - define your target orientation
-    double q0_f = 0.0, q1_f = 0.0, q2_f = 0.0, q3_f = 1.0;  // 180 degree rotation about z-axis
+    double q0_f = final_state[0], q1_f = final_state[1], q2_f = final_state[2], q3_f = final_state[3];
 
     // Initial and final angular velocities (typically zero for rest-to-rest)
-    double w1_0 = 0.0, w2_0 = 0.0, w3_0 = 0.0;
-    double w1_f = 0.0, w2_f = 0.0, w3_f = 0.0;
+    double w1_0 = initial_state[4], w2_0 = initial_state[5], w3_0 = initial_state[6];
+    double w1_f = final_state[4], w2_f = final_state[5], w3_f = final_state[6];
 
     // State bounds during trajectory
     double qmin = q_min,             qmax = q_max;            // quaternion component bounds

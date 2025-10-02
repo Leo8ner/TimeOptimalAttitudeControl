@@ -20,6 +20,11 @@ extern double q_max;
 extern double q_min;
 extern double w_max;
 extern double w_min;
+extern int n_states;
+extern int n_controls;
+extern double DEG;
+extern double RAD;
+extern double PI;
 
 #endif
 

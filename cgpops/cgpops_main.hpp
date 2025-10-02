@@ -12,12 +12,13 @@
 #include "cgpopsFuncDec.hpp"
 #include "nlpGlobVarExt.hpp"
 #include "cgpopsAuxExt.hpp"
+#include <vector>
 
 
 // $#$#$
 
 
-void cgpops_go(doubleMat& cgpopsResults);
+void cgpops_go(doubleMat& cgpopsResults, const std::vector<double>& initial_state, const std::vector<double>& final_state);
 
 
 #endif
