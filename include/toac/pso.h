@@ -226,11 +226,12 @@ public:
     
     /**
      * @brief Constructor - initializes PSO optimizer with default parameters
-     * @param initial_state Initial state [w,x,y,z,wx,wy,wz] [unit quaternion, angular velocity]
-     * @param target_state Target state [w,x,y,z,wx,wy,wz] [unit quaternion, angular velocity]
+     * @param[out] state_matrix  Discrete state trajectory matrix (size: n_states x (N+1)).
+     * @param[out] input_matrix  Discrete control input trajectory matrix (size: n_controls x N).
+     * @param[out] dt_matrix Time step durations (vector or 1 x N DM depending on formulation).
      * @param verbose Enable progress output during optimization
      */
-    PSOOptimizer(const double* initial_state, const double* target_state, bool verbose = false);
+    PSOOptimizer(casadi::DM& state_matrix, casadi::DM& input_matrix, casadi::DM& dt_matrix, bool verbose = false);
     
     /**
      * @brief Destructor - cleans up allocated memory
@@ -254,18 +255,23 @@ public:
                          double cognitive_weight = C1, 
                          double social_weight = C2);
 
+    /**
+     * @brief Set spacecraft initial and target states
+     * @param initial_state Pointer to initial state array [q0, q1, q2, q3, wx, wy, wz]
+     * @param target_state Pointer to target state array [q0, q1, q2, q3, wx, wy, wz]
+     */
+    void setStates(const double* initial_state, const double* target_state);
+
     /*==========================================================================
      * OPTIMIZATION METHODS
      *========================================================================*/
     
     /**
      * @brief Run PSO optimization to find optimal attitude maneuver
-     * @param[out] X  Discrete state trajectory matrix (size: n_states x (N+1)).
-     * @param[out] U  Discrete control input trajectory matrix (size: n_controls x N).
-     * @param[out] dt Time step durations (vector or 1 x N DM depending on formulation).
+     * @param regenerate_lhs If true, regenerate Latin Hypercube Samples for particle initialization
      * @return true if optimization completed successfully, false on error
      */
-    bool optimize(casadi::DM& X, casadi::DM& U, casadi::DM& dt);
+    bool optimize(bool regenerate_lhs = true);
    
     /**
      * @brief Get summary statistics of the last optimization run.
@@ -273,28 +279,17 @@ public:
      * Provides basic performance and convergence metrics gathered during the
      * most recent optimize() execution.
      *
-     * @param[out] iterations      Number of iterations (generations) performed.
      * @param[out] final_fitness   Best (lowest) objective function value achieved.
-     * @param[out] total_time      Wall-clock time from start to end of optimization (seconds).
+     * @param[out] setup_time      Time taken for setup (seconds).
      * @param[out] exec_time       Pure execution time excluding setup / teardown (seconds) if tracked.
-     *
      * @return true if statistics are available (i.e., an optimization has completed),
      *         false otherwise.
-     *
-     * @note Values are implementation-dependent and may be zeroed if not tracked.
      */
     bool getStats(double& final_fitness, double& setup_time, double& exec_time) const;
 
     /*==========================================================================
      * UTILITY METHODS
      *========================================================================*/
-    
-    /**
-     * @brief Save trajectory results to CSV file
-     * @param filename Output CSV file path
-     * @return true if file written successfully, false on error
-     */
-    bool saveTrajectoryCSV(const char* filename) const;
     
     /**
      * @brief Print optimization summary to console
@@ -326,6 +321,10 @@ private:
     // Optimization state
     bool configured_;                   /**< True if all parameters are set */
     bool results_valid_;                /**< True if optimization completed successfully */
+
+    // Store LHS samples for reuse
+    float** lhs_samples_;
+    bool lhs_generated_;
     
     // Host memory pointers
     particle* particles_;               /**< Host particle data structure */
@@ -336,6 +335,11 @@ private:
     float *pbest_pos_d_, *pbest_fit_d_;
     particle_gbest *gbest_d_;
     float *aux_, *aux_pos_;
+
+    // Output references
+    casadi::DM& X;             /**< Reference to output state trajectory DM */
+    casadi::DM& U;             /**< Reference to output control trajectory DM */
+    casadi::DM& dt;            /**< Reference to output time step DM */
     
     // CUDA timing
     cudaEvent_t start_event_, stop_event_;
@@ -358,11 +362,23 @@ private:
      *========================================================================*/
     
     /**
-     * @brief Initialize CUDA device memory and copy constants
+     * @brief Allocate all necessary device memory
      * @return true on success, false on error
      */
-    bool initializeCUDA();
+    bool allocateDeviceMemory();
     
+    /**
+     * @brief Copy immutable constants to device memory
+     * @return true on success, false on error
+     */
+    bool copyImmutableConstants();
+
+    /**
+     * @brief Copy mutable state parameters to device memory
+     * @return true on success, false on error
+     */
+    bool copyMutableStateParameters();
+
     /**
      * @brief Clean up all allocated memory (host and device)
      */
@@ -370,9 +386,10 @@ private:
     
     /**
      * @brief Initialize particle swarm with random positions and velocities
+     * @param regenerate_lhs If true, regenerate Latin Hypercube Samples
      * @return true on success, false on error
      */
-    bool initializeParticles();
+    bool initializeParticles(bool regenerate_lhs);
 
     /**
      * @brief Generate Latin Hypercube Samples for particle initialization
@@ -382,17 +399,8 @@ private:
     
     /**
      * @brief Extract results from optimization
-     * @param X Output state trajectory
-     * @param U Output control trajectory
-     * @param dt Output time step vector
      */
-    void extractResults(casadi::DM& X, casadi::DM& U, casadi::DM& dt);
-    
-    /**
-     * @brief Validate that all required parameters have been set
-     * @return true if configuration is complete, false otherwise
-     */
-    bool validateConfiguration() const;
+    void extractResults();
     
     /**
      * @brief CUDA error handling function

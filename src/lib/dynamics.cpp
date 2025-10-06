@@ -22,7 +22,7 @@ Dynamics::Dynamics(const std::string& plugin) {
     // Create integrator options
     MXDict dae = {{"x", X}, {"u", U}, {"p", dt}, {"ode", X_dot*dt}};
     Dict opts;
-    if (plugin == "ipopt" || plugin == "qpoases") {
+    if (plugin == "ipopt" || plugin == "snopt") {
         // opts["collocation_scheme"] = "legendre";
         // opts["interpolation_order"] = 3;
         // opts["simplify"] = true;

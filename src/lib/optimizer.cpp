@@ -14,8 +14,6 @@ Optimizer::Optimizer(const Function& dyn, const std::string& plugin,
     p_Xf = opti.parameter(n_states);           // Parameter for final state
 
     Dict plugin_opts{}, solver_opts{};
-
-
     
     if (plugin == "fatrop") {
         
@@ -139,7 +137,7 @@ Optimizer::Optimizer(const Function& dyn, const std::string& plugin,
             {"X", "U", "T", "dt"}
         );
 
-    } else if (plugin == "qpoases") {
+    } else if (plugin == "snopt") {
 
         // Define variables (similar to IPOPT approach)
         X = opti.variable(n_states, n_stp + 1);
@@ -152,7 +150,7 @@ Optimizer::Optimizer(const Function& dyn, const std::string& plugin,
         opti.subject_to(X(all,Slice(1, n_stp+1)) == X_kp1);
         
         // Quaternion norm constraints
-        opti.subject_to(sum1(pow(X(Slice(0,4),all), 2)) == 1);
+        //opti.subject_to(sum1(pow(X(Slice(0,4),all), 2)) == 1);
         
         // Boundary conditions
         opti.subject_to(X(all,0) == p_X0);     // Initial state
@@ -167,24 +165,16 @@ Optimizer::Optimizer(const Function& dyn, const std::string& plugin,
         opti.subject_to(opti.bounded(lb_U, U, ub_U));
         opti.subject_to(dt > 0);  
 
-    Dict qpsol_opts{
-        {"solver", "ipopt"},
-    };
-        // qpOASES-specific plugin options
-   plugin_opts = {
-        {"qpsol", "nlpsol"},                  // QP solver
-        {"qpsol_options", qpsol_opts},       // Use qpOASES
-        //{"structure_detection", "auto"},
-    };
+        plugin_opts = {
+            {"expand", false},
+        };
 
-    solver_opts = {
-        //{"nlpsol", "fatrop"},                  // QP solver
-        // {"codegen", true},                   // Enable code generation
+        solver_opts = {
 
-    };
+        };
         // Set the objective function
         opti.minimize(T);
-        opti.solver("sqpmethod", plugin_opts, solver_opts);
+        opti.solver("snopt", plugin_opts, solver_opts);
 
         solver = opti.to_function("solver",
             {p_X0, p_Xf, X, U, dt},

@@ -28,6 +28,16 @@ find_package(CUDAToolkit REQUIRED)
 enable_language(CUDA)
 message(STATUS "CUDA version: ${CUDAToolkit_VERSION}")
 
+# Find pkg-config for IPOPT detection (required by cgpops)
+find_package(PkgConfig REQUIRED)
+
+# Set cgpops directory
+set(CGPOPS_DIR "/home/leo8ner/cgpops")
+set(CGPOPS_FUNC_DIR "${CGPOPS_DIR}/src")
+
+# Use pkg-config to find IPOPT (cgpops requirement)
+pkg_check_modules(IPOPT_PKG REQUIRED ipopt)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
@@ -135,6 +145,7 @@ add_library(toac STATIC
             src/lib/external_rk4.cpp
             src/lib/pso.cu
             src/lib/helper_functions.cpp
+            src/lib/lhs.cpp
 ) 
 
 add_library(toac_shared SHARED 
@@ -190,6 +201,35 @@ set_target_properties(toac_shared PROPERTIES
     PREFIX "lib"
 )
 
+file(GLOB CGPOPS_SOURCES ${CGPOPS_FUNC_DIR}/*.cpp)
+
+# Create cgpops library
+add_library(cgpops STATIC ${CGPOPS_SOURCES})
+
+target_include_directories(cgpops PUBLIC
+    ${CGPOPS_DIR}
+    ${CGPOPS_FUNC_DIR}
+    ${IPOPT_PKG_INCLUDE_DIRS}
+)
+
+target_compile_definitions(cgpops PRIVATE
+    IPOPT_BUILD
+    SRC_PATH="${CGPOPS_FUNC_DIR}"
+)
+
+target_compile_options(cgpops PRIVATE
+    -O3 -pipe
+    ${IPOPT_PKG_CFLAGS_OTHER}
+)
+
+target_link_libraries(cgpops PUBLIC
+    ${IPOPT_PKG_LIBRARIES}
+)
+
+target_link_directories(cgpops PUBLIC
+    ${IPOPT_PKG_LIBRARY_DIRS}
+)
+
 # include header directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
@@ -206,25 +246,25 @@ file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
 
-add_executable(GenerateCode src/serial/bangbang/symmetric/c_code_gen.cpp)
+add_executable(GenerateCode src/serial/c_code_gen.cpp)
 
 # Link the executable to the libraries
 target_link_libraries(GenerateCode PRIVATE ${CASADI_LIBRARIES} ${IPOPT_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
 target_include_directories(GenerateCode PRIVATE ${CASADI_INCLUDE_DIR} ${IPOPT_INCLUDE_DIRS} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-add_executable(SerialBangbangSymmetric src/serial/bangbang/symmetric/main.cpp)
+add_executable(SerialBangbangSymmetric src/serial/main.cpp)
 
 # Link the executable to the libraries
 target_link_libraries(SerialBangbangSymmetric PRIVATE ${CASADI_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
 target_include_directories(SerialBangbangSymmetric PRIVATE ${CASADI_INCLUDE_DIR} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-add_executable(SerialBangbangSymmetricCodeGen src/serial/bangbang/symmetric/main_code_gen.cpp)
+add_executable(SerialBangbangSymmetricCodeGen src/serial/main_code_gen.cpp)
 
 # Link the executable to the libraries
 target_link_libraries(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
 target_include_directories(SerialBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLUDE_DIR} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-add_executable(PSOwithSerial src/serial/bangbang/symmetric/main_pso.cpp)
+add_executable(PSOwithSerial src/serial/main_pso.cpp)
 
 # Link the executable to the libraries
 target_link_libraries(PSOwithSerial PRIVATE ${CASADI_LIBRARIES} toac CUDA::cudart CUDA::curand) 
@@ -232,7 +272,7 @@ target_include_directories(PSOwithSerial PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_S
 
 
 # Uncomment and fix the parallel version when needed
-add_executable(ParGenerateCode src/parallel/bangbang/symmetric/c_code_gen.cpp)
+add_executable(ParGenerateCode src/parallel/c_code_gen.cpp)
 target_link_libraries(ParGenerateCode PRIVATE
     ${CASADI_LIBRARIES}
     ${SUNDIALS_LIBRARIES}
@@ -242,7 +282,7 @@ target_link_libraries(ParGenerateCode PRIVATE
     toac
 )
 
-add_executable(ParallelBangbangSymmetric src/parallel/bangbang/symmetric/main.cpp)
+add_executable(ParallelBangbangSymmetric src/parallel/main.cpp)
 target_link_libraries(ParallelBangbangSymmetric PRIVATE
     ${CASADI_LIBRARIES}
     ${SUNDIALS_LIBRARIES}
@@ -252,10 +292,17 @@ target_link_libraries(ParallelBangbangSymmetric PRIVATE
     toac
 )
 
-add_executable(ParallelBangbangSymmetricCodeGen src/parallel/bangbang/symmetric/main_code_gen.cpp)
+add_executable(ParallelBangbangSymmetricCodeGen src/parallel/main_code_gen.cpp)
 target_link_libraries(ParallelBangbangSymmetricCodeGen PRIVATE ${CASADI_LIBRARIES} ${SUNDIALS_LIBRARIES} toac)
 target_include_directories(ParallelBangbangSymmetricCodeGen PRIVATE ${CASADI_INCLUDE_DIR} ${SUNDIALS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
+add_executable(GenerateSamples src/montecarlo/sample_generator.cpp)
+target_link_libraries(GenerateSamples PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(GenerateSamples PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+
+add_executable(MCS src/montecarlo/mcs.cpp)
+target_link_libraries(MCS PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(MCS PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 # Runs GenerateCode automatically after build
 add_custom_target(run_codegen_serial
@@ -302,6 +349,6 @@ add_custom_target(only_pso
 
 
 # Add tests
-# add_executable(TestDyn src/parallel/bangbang/symmetric/test_code_gen.cpp)
+# add_executable(TestDyn src/parallel/test_code_gen.cpp)
 # target_link_libraries(TestDyn PRIVATE ${CASADI_LIBRARIES} toac)
 # target_include_directories(TestDyn PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)

@@ -29,14 +29,15 @@ int main(int argc, char* argv[]) {
         DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
 
         auto prepare_pso = std::chrono::high_resolution_clock::now();
-        PSOOptimizer initial_guess(X_0->data(), X_f->data()); // Create PSO optimizer instance
+        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, true); // Create PSO optimizer instance
+        initial_guess.setStates(X_0->data(), X_f->data());
         // double w = 5.0; // Inertia weight
         // double c1 = 2.0; // Cognitive weight
         // double c2 = 1.0; // Social weight
 
         // initial_guess.setPSOParameters(100,w,c1,c2); // Set PSO parameters: iterations, particles, inertia, cognitive, social
         auto start_pso = std::chrono::high_resolution_clock::now();
-        if(!initial_guess.optimize(X_guess, U_guess, dt_guess)) {
+        if(!initial_guess.optimize(true)) {
             std::cerr << "Error: PSO initial guess optimization failed." << std::endl;
             return -1;
         }

@@ -275,8 +275,7 @@ __global__ void findBest(particle_gbest *gbest, float *aux, float *aux_pos, floa
 /*==============================================================================
  * PSO OPTIMIZER CLASS IMPLEMENTATION
  *============================================================================*/
-
-PSOOptimizer::PSOOptimizer(const double* initial_state, const double* target_state, bool verbose) 
+PSOOptimizer::PSOOptimizer(casadi::DM& state_matrix, casadi::DM& input_matrix, casadi::DM& dt_matrix, bool verbose) 
     : configured_(false)
     , results_valid_(false)
     , max_iterations_(MAX_ITERA)
@@ -293,7 +292,12 @@ PSOOptimizer::PSOOptimizer(const double* initial_state, const double* target_sta
     , gbest_d_(nullptr)
     , aux_(nullptr)
     , aux_pos_(nullptr)
+    , lhs_samples_(nullptr)
+    , lhs_generated_(false)
     , verbose_(verbose)
+    , X(state_matrix)
+    , U(input_matrix)
+    , dt(dt_matrix)
 {
     // Initialize CUDA events
     if (!handleCudaError(cudaEventCreate(&start_event_), __FILE__, __LINE__) ||
@@ -301,13 +305,23 @@ PSOOptimizer::PSOOptimizer(const double* initial_state, const double* target_sta
         std::cerr << "Failed to create CUDA events" << std::endl;
     }
 
-    // Start timing
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
 
-    // Initialize attitude parameters with default values
+    if ((X.size1() != n_states || X.size2() != N_STEPS + 1) ||
+       (U.size1() != n_controls || U.size2() != N_STEPS) ||
+       (dt.size1() != N_STEPS || dt.size2() != 1)){
+        std::cerr << "Error: Output matrices have incorrect dimensions." << std::endl;
+        std::cerr << "Expected dimensions | Given dimensions: " 
+                  << "X: (" << n_states << ", " << N_STEPS + 1 << ") | (" << X.size1() << ", " << X.size2() << "), "
+                  << "U: (" << n_controls << ", " << N_STEPS << ") | (" << U.size1() << ", " << U.size2() << "), "
+                  << "dt: (" << N_STEPS << ", 1) | (" << dt.size1() << ", " << dt.size2() << ")" << std::endl;
+        cleanup();
+        return;
+    }
+
+    // Initialize attitude parameters with default spacecraft values
     memset(&att_params_, 0, sizeof(attitude_params));
     
-    // Set default spacecraft parameters (will be overridden by setSpacecraftParameters)
     att_params_.inertia[0] = static_cast<float>(i_x);
     att_params_.inertia[1] = static_cast<float>(i_y);
     att_params_.inertia[2] = static_cast<float>(i_z);
@@ -315,104 +329,56 @@ PSOOptimizer::PSOOptimizer(const double* initial_state, const double* target_sta
     att_params_.min_torque = -static_cast<float>(tau_max);
     att_params_.max_dt = static_cast<float>(dt_max);
     att_params_.min_dt = static_cast<float>(dt_min);
-    for (int i = 0; i < n_quat; i++) {
-        att_params_.initial_quat[i] = static_cast<float>(initial_state[i]);
-        att_params_.target_quat[i] = static_cast<float>(target_state[i]);
-    }
-    for (int i = 0; i < n_vel; i++) {
-        att_params_.initial_omega[i] = static_cast<float>(initial_state[i + n_quat]);
-        att_params_.target_omega[i] = static_cast<float>(target_state[i + n_quat]);
-    }
     
     // Initialize velocity limits
     max_v_torque_ = 2.0f * att_params_.max_torque;
     max_v_dt_ = att_params_.max_dt - att_params_.min_dt;
 
-    // Validate configuration
-    if (!validateConfiguration()) {
-        std::cerr << "Configuration validation failed" << std::endl;
-        cleanup();
+    // Allocate LHS samples storage
+    lhs_samples_ = new float*[num_particles_];
+    for (int i = 0; i < num_particles_; i++) {
+        lhs_samples_[i] = new float[DIMENSIONS];
     }
 
-        // Stop timing
-    handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
+    // Allocate host particle structure (once)
+    particles_ = (particle*)malloc(sizeof(particle));
+    if (!particles_) {
+        std::cerr << "Failed to allocate particle structure" << std::endl;
+        cleanup();
+        return;
+    }
     
-    // Calculate execution time
+    particles_->position = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
+    particles_->velocity = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
+    particles_->pbest_pos = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
+    particles_->fitness = (float*)malloc(sizeof(float) * num_particles_);
+    particles_->pbest_fit = (float*)malloc(sizeof(float) * num_particles_);
+    
+    if (!particles_->position || !particles_->velocity || !particles_->pbest_pos || 
+        !particles_->fitness || !particles_->pbest_fit) {
+        std::cerr << "Failed to allocate particle arrays" << std::endl;
+        cleanup();
+        return;
+    }
+
+    // One-time GPU initialization
+    if (!allocateDeviceMemory() || !copyImmutableConstants()) {
+        std::cerr << "GPU initialization failed" << std::endl;
+        cleanup();
+        return;
+    }
+
+    handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
     handleCudaError(cudaEventSynchronize(stop_event_), __FILE__, __LINE__);
     handleCudaError(cudaEventElapsedTime(&setup_time_, start_event_, stop_event_), __FILE__, __LINE__);
+    setup_time_ /= 1000.0f;
 }
 
 PSOOptimizer::~PSOOptimizer() {
     cleanup();
 }
 
-void PSOOptimizer::setPSOParameters(int max_iterations,
-                                   double inertia_weight, double cognitive_weight, double social_weight) {
-    
-    handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
-
-    max_iterations_ = max_iterations;
-    inertia_weight_ = static_cast<float>(inertia_weight);
-    cognitive_weight_ = static_cast<float>(cognitive_weight);
-    social_weight_ = static_cast<float>(social_weight);
-
-    results_valid_ = false;
-    // Stop timing
-    handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
-    
-    // Calculate execution time
-    float temp_time;
-    handleCudaError(cudaEventSynchronize(stop_event_), __FILE__, __LINE__);
-    handleCudaError(cudaEventElapsedTime(&temp_time, start_event_, stop_event_), __FILE__, __LINE__);
-    setup_time_ += temp_time; // Accumulate
-}
-
-bool PSOOptimizer::validateConfiguration() const {
-    // Check that all required parameters are set
-    bool valid = true;
-    
-    // Check inertia values
-    if (att_params_.inertia[0] <= 0 || att_params_.inertia[1] <= 0 || att_params_.inertia[2] <= 0) {
-        std::cerr << "Error: Inertia values must be positive" << std::endl;
-        valid = false;
-    }
-    
-    // Check torque limits
-    if (att_params_.max_torque <= 0) {
-        std::cerr << "Error: Maximum torque must be positive" << std::endl;
-        valid = false;
-    }
-    
-    // Check time constraints
-    if (att_params_.min_dt < 0 || att_params_.max_dt <= att_params_.min_dt) {
-        std::cerr << "Error: Invalid time step constraints" << std::endl;
-        valid = false;
-    }
-    
-    // Check quaternion normalization
-    float q_norm_initial = sqrt(att_params_.initial_quat[0]*att_params_.initial_quat[0] + 
-                               att_params_.initial_quat[1]*att_params_.initial_quat[1] + 
-                               att_params_.initial_quat[2]*att_params_.initial_quat[2] + 
-                               att_params_.initial_quat[3]*att_params_.initial_quat[3]);
-    
-    float q_norm_target = sqrt(att_params_.target_quat[0]*att_params_.target_quat[0] + 
-                              att_params_.target_quat[1]*att_params_.target_quat[1] + 
-                              att_params_.target_quat[2]*att_params_.target_quat[2] + 
-                              att_params_.target_quat[3]*att_params_.target_quat[3]);
-    
-    if (fabs(q_norm_initial - 1.0f) > 1e-3f) {
-        std::cerr << "Warning: Initial quaternion is not normalized (norm = " << q_norm_initial << ")" << std::endl;
-    }
-    
-    if (fabs(q_norm_target - 1.0f) > 1e-3f) {
-        std::cerr << "Warning: Target quaternion is not normalized (norm = " << q_norm_target << ")" << std::endl;
-    }
-    
-    return valid;
-}
-
-bool PSOOptimizer::initializeCUDA() {
-    // Allocate device memory
+bool PSOOptimizer::allocateDeviceMemory() {
     size_t particle_data_size = sizeof(float) * num_particles_ * DIMENSIONS;
     
     if (!handleCudaError(cudaMalloc((void**)&position_d_, particle_data_size), __FILE__, __LINE__) ||
@@ -426,62 +392,111 @@ bool PSOOptimizer::initializeCUDA() {
         return false;
     }
     
-    // Copy constants to device constant memory
+    return true;
+}
+
+void PSOOptimizer::setPSOParameters(int max_iterations,
+                                   double inertia_weight, double cognitive_weight, double social_weight) {
+    
+    handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
+
+    max_iterations_ = max_iterations;
+    inertia_weight_ = static_cast<float>(inertia_weight);
+    cognitive_weight_ = static_cast<float>(cognitive_weight);
+    social_weight_ = static_cast<float>(social_weight);
+
+    copyImmutableConstants();
+
+    results_valid_ = false;
+    // Stop timing
+    handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
+    
+    // Calculate execution time
+    float temp_time;
+    handleCudaError(cudaEventSynchronize(stop_event_), __FILE__, __LINE__);
+    handleCudaError(cudaEventElapsedTime(&temp_time, start_event_, stop_event_), __FILE__, __LINE__);
+    setup_time_ += temp_time; // Accumulate
+}
+
+bool PSOOptimizer::copyImmutableConstants() {
+    // Copy PSO parameters
     if (!handleCudaError(cudaMemcpyToSymbol(w_d, &inertia_weight_, sizeof(float)), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpyToSymbol(c1_d, &cognitive_weight_, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(c2_d, &social_weight_, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(max_torque_d, &att_params_.max_torque, sizeof(float)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(c2_d, &social_weight_, sizeof(float)), __FILE__, __LINE__)) {
+        return false;
+    }
+    
+    // Copy physical constraints (immutable)
+    if (!handleCudaError(cudaMemcpyToSymbol(max_torque_d, &att_params_.max_torque, sizeof(float)), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpyToSymbol(min_torque_d, &att_params_.min_torque, sizeof(float)), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpyToSymbol(max_dt_d, &att_params_.max_dt, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(min_dt_d, &att_params_.min_dt, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(max_v_torque_d, &max_v_torque_, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(max_v_dt_d, &max_v_dt_, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(particle_cnt_d, &num_particles_, sizeof(int)), __FILE__, __LINE__)) {
+        !handleCudaError(cudaMemcpyToSymbol(min_dt_d, &att_params_.min_dt, sizeof(float)), __FILE__, __LINE__)) {
+        return false;
+    }
+    
+    // Copy velocity limits
+    if (!handleCudaError(cudaMemcpyToSymbol(max_v_torque_d, &max_v_torque_, sizeof(float)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(max_v_dt_d, &max_v_dt_, sizeof(float)), __FILE__, __LINE__)) {
+        return false;
+    }
+    
+    // Copy dimensions
+    if (!handleCudaError(cudaMemcpyToSymbol(particle_cnt_d, &num_particles_, sizeof(int)), __FILE__, __LINE__)) {
         return false;
     }
     
     int dimensions = DIMENSIONS;
-    if (!handleCudaError(cudaMemcpyToSymbol(dimensions_d, &dimensions, sizeof(int)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(att_params_d, &att_params_, sizeof(attitude_params)), __FILE__, __LINE__)) {
+    if (!handleCudaError(cudaMemcpyToSymbol(dimensions_d, &dimensions, sizeof(int)), __FILE__, __LINE__)) {
         return false;
     }
     
     return true;
 }
 
-bool PSOOptimizer::initializeParticles() {
+bool PSOOptimizer::copyMutableStateParameters() {
+    // Only copy the att_params structure (contains initial/target states)
+    return handleCudaError(cudaMemcpyToSymbol(att_params_d, &att_params_, sizeof(attitude_params)), __FILE__, __LINE__);
+}
+
+void PSOOptimizer::setStates(const double* initial_state, const double* target_state) {
+    handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
+    // Update initial and target states
+    for (int i = 0; i < n_quat; i++) {
+        att_params_.initial_quat[i] = static_cast<float>(initial_state[i]);
+        att_params_.target_quat[i] = static_cast<float>(target_state[i]);
+    }
+    for (int i = 0; i < n_vel; i++) {
+        att_params_.initial_omega[i] = static_cast<float>(initial_state[i + n_quat]);
+        att_params_.target_omega[i] = static_cast<float>(target_state[i + n_quat]);
+    }
+    
+    // Copy updated parameters to device constant memory
+    copyMutableStateParameters();
+    
+    results_valid_ = false;
+
+    handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
+    
+    // Calculate execution time
+    float temp_time;
+    handleCudaError(cudaEventSynchronize(stop_event_), __FILE__, __LINE__);
+    handleCudaError(cudaEventElapsedTime(&temp_time, start_event_, stop_event_), __FILE__, __LINE__);
+    setup_time_ += temp_time; // Accumulate
+}
+
+bool PSOOptimizer::initializeParticles(bool regenerate_lhs) {
     srand((unsigned)time(NULL));
     
-    // Allocate host memory
-    particles_ = (particle*)malloc(sizeof(particle));
-    if (!particles_) {
-        std::cerr << "Failed to allocate particle structure" << std::endl;
-        return false;
+    // Generate or reuse LHS samples
+    if (regenerate_lhs || !lhs_generated_) {
+        generateLHSSamples(lhs_samples_);
+        lhs_generated_ = true;
     }
-    
-    particles_->position = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
-    particles_->velocity = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
-    particles_->pbest_pos = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
-    particles_->fitness = (float*)malloc(sizeof(float) * num_particles_);
-    particles_->pbest_fit = (float*)malloc(sizeof(float) * num_particles_);
-    
-    if (!particles_->position || !particles_->velocity || !particles_->pbest_pos || 
-        !particles_->fitness || !particles_->pbest_fit) {
-        std::cerr << "Failed to allocate particle arrays" << std::endl;
-        return false;
-    }
-
-    // Generate LHS samples
-    float** lhs_samples = new float*[num_particles_];
-    for (int i = 0; i < num_particles_; i++) {
-        lhs_samples[i] = new float[DIMENSIONS];
-    }
-    generateLHSSamples(lhs_samples);
     
     // Initialize global best
     gbest_.fitness = -FLT_MAX;
     
-    // Initialize each particle
+    // Initialize each particle using LHS samples
     int best_particle = 0;
     for (int i = 0; i < num_particles_; i++) {
         // Initialize torque variables
@@ -489,8 +504,8 @@ bool PSOOptimizer::initializeParticles() {
             int idx = PARTICLE_POS_IDX(i, dim);
             float torque_range = att_params_.max_torque - att_params_.min_torque;
             
-            particles_->position[idx] = lhs_samples[i][dim] * torque_range + att_params_.min_torque;
-            particles_->velocity[idx] = (lhs_samples[i][dim] - 0.5f) * 2.0f * max_v_torque_;
+            particles_->position[idx] = lhs_samples_[i][dim] * torque_range + att_params_.min_torque;
+            particles_->velocity[idx] = (lhs_samples_[i][dim] - 0.5f) * 2.0f * max_v_torque_;
             particles_->pbest_pos[idx] = particles_->position[idx];
         }
         
@@ -498,8 +513,8 @@ bool PSOOptimizer::initializeParticles() {
         int dt_idx = PARTICLE_POS_IDX(i, DT_IDX);
         float dt_range = att_params_.max_dt - att_params_.min_dt;
         
-        particles_->position[dt_idx] = lhs_samples[i][DT_IDX] * dt_range + att_params_.min_dt;
-        particles_->velocity[dt_idx] = (lhs_samples[i][DT_IDX] - 0.5f) * 2.0f * max_v_dt_;
+        particles_->position[dt_idx] = lhs_samples_[i][DT_IDX] * dt_range + att_params_.min_dt;
+        particles_->velocity[dt_idx] = (lhs_samples_[i][DT_IDX] - 0.5f) * 2.0f * max_v_dt_;
         particles_->pbest_pos[dt_idx] = particles_->position[dt_idx];
         
         // Evaluate initial fitness
@@ -551,14 +566,13 @@ void PSOOptimizer::generateLHSSamples(float** samples) {
     }
 }
 
-bool PSOOptimizer::optimize(casadi::DM& X, casadi::DM& U, casadi::DM& dt) {
+bool PSOOptimizer::optimize(bool regenerate_lhs) {
 
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
     
-    // Initialize CUDA and particles
-    if (!initializeCUDA() || !initializeParticles()) {
-        std::cerr << "Initialization failed" << std::endl;
-        cleanup();
+    // Initialize particles (regenerate LHS based on parameter)
+    if (!initializeParticles(regenerate_lhs)) {
+        std::cerr << "Particle initialization failed" << std::endl;
         return false;
     }
     
@@ -570,52 +584,40 @@ bool PSOOptimizer::optimize(casadi::DM& X, casadi::DM& U, casadi::DM& dt) {
         !handleCudaError(cudaMemcpy(fitness_d_, particles_->fitness, sizeof(float) * num_particles_, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpy(pbest_fit_d_, particles_->pbest_fit, sizeof(float) * num_particles_, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpy(gbest_d_, &gbest_, sizeof(particle_gbest), cudaMemcpyHostToDevice), __FILE__, __LINE__)) {
-        cleanup();
         return false;
     }
     
     if (verbose_) {
         std::cout << "Starting PSO optimization..." << std::endl;
-        std::cout << "Particles: " << num_particles_ << ", Dimensions: " << DIMENSIONS << std::endl;
-        std::cout << "Max iterations: " << max_iterations_ << std::endl;
+        std::cout << "LHS: " << (regenerate_lhs ? "Regenerated" : "Reused") << std::endl;
         std::cout << "Initial best fitness: " << gbest_.fitness << std::endl;
     }
     
     // Main optimization loop
     int shared_mem_size = sizeof(float) * ThreadsPerBlock + sizeof(int) * ThreadsPerBlock;
 
-    // Stop timing
     handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
-    
-    // Calculate execution time
     float temp_time;
     handleCudaError(cudaEventSynchronize(stop_event_), __FILE__, __LINE__);
     handleCudaError(cudaEventElapsedTime(&temp_time, start_event_, stop_event_), __FILE__, __LINE__);
-    setup_time_ += temp_time; // Accumulate
-
-    // Start timing
+    setup_time_ += temp_time / 1000.0f;  // Convert ms to seconds
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
 
     for (int iter = 0; iter < max_iterations_; iter++) {
-        // Launch PSO update kernel
         move<<<BlocksPerGrid, ThreadsPerBlock, shared_mem_size>>>(
             position_d_, velocity_d_, fitness_d_, pbest_pos_d_, pbest_fit_d_,
             gbest_d_, aux_, aux_pos_);
         
         if (!handleCudaError(cudaDeviceSynchronize(), __FILE__, __LINE__)) {
-            cleanup();
             return false;
         }
         
-        // Launch global best finding kernel
         findBest<<<1, 32>>>(gbest_d_, aux_, aux_pos_, position_d_);
         
         if (!handleCudaError(cudaDeviceSynchronize(), __FILE__, __LINE__)) {
-            cleanup();
             return false;
         }
         
-        // Progress reporting
         if (verbose_ && (iter % 100 == 0 || iter == max_iterations_ - 1)) {
             particle_gbest current_best;
             if (handleCudaError(cudaMemcpy(&current_best, gbest_d_, sizeof(particle_gbest), cudaMemcpyDeviceToHost), __FILE__, __LINE__)) {
@@ -624,40 +626,25 @@ bool PSOOptimizer::optimize(casadi::DM& X, casadi::DM& U, casadi::DM& dt) {
         }
     }
     
-    // Stop timing
     handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
-
-    // Calculate execution time
     handleCudaError(cudaEventSynchronize(stop_event_), __FILE__, __LINE__);
     handleCudaError(cudaEventElapsedTime(&exec_time_, start_event_, stop_event_), __FILE__, __LINE__);
     
-    handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
-
     // Copy final results
     if (!handleCudaError(cudaMemcpy(&gbest_, gbest_d_, sizeof(particle_gbest), cudaMemcpyDeviceToHost), __FILE__, __LINE__)) {
-        printf("Error copying final results from device to host\n");
-        cleanup();
+        std::cerr << "Error copying final results" << std::endl;
         return false;
     }
 
     dt_opt_ = gbest_.position[DT_IDX];
     total_time_ = dt_opt_ * N_STEPS;
     final_fitness_ = gbest_.fitness;
-    exec_time_ = exec_time_ / 1000.0f; // Convert to seconds
+    exec_time_ = exec_time_ / 1000.0f;
     
-    extractResults(X, U, dt);
+    extractResults();
 
     results_valid_ = true;
     configured_ = true;
-    
-    // Stop timing
-    handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
-    
-    // Calculate execution time
-    handleCudaError(cudaEventSynchronize(stop_event_), __FILE__, __LINE__);
-    handleCudaError(cudaEventElapsedTime(&temp_time, start_event_, stop_event_), __FILE__, __LINE__);
-    setup_time_ += temp_time; // Accumulate
-    setup_time_ /= 1000.0f; // Convert to seconds
 
     if (verbose_) {
         printResults();
@@ -666,20 +653,7 @@ bool PSOOptimizer::optimize(casadi::DM& X, casadi::DM& U, casadi::DM& dt) {
     return true;
 }
 
-void PSOOptimizer::extractResults(casadi::DM& X, casadi::DM& U, casadi::DM& dt) {
-
-    if ((X.size1() != n_states || X.size2() != N_STEPS + 1) ||
-       (U.size1() != n_controls || U.size2() != N_STEPS) ||
-       (dt.size1() != N_STEPS || dt.size2() != 1)){
-        std::cerr << "Warning: Output matrices have incorrect dimensions. Resizing..." << std::endl;
-        std::cerr << "Expected dimensions | Given dimensions: " 
-                  << "X: (" << n_states << ", " << N_STEPS + 1 << ") | (" << X.size1() << ", " << X.size2() << "), "
-                  << "U: (" << n_controls << ", " << N_STEPS << ") | (" << U.size1() << ", " << U.size2() << "), "
-                  << "dt: (" << N_STEPS << ", 1) | (" << dt.size1() << ", " << dt.size2() << ")" << std::endl;
-        X.resize(n_states, N_STEPS + 1);
-        U.resize(n_controls, N_STEPS);
-        dt.resize(N_STEPS, 1);
-    }
+void PSOOptimizer::extractResults() {
 
     double dt_double = static_cast<double>(dt_opt_);
 
@@ -752,6 +726,15 @@ void PSOOptimizer::reset() {
 }
 
 void PSOOptimizer::cleanup() {
+    // Free LHS samples
+    if (lhs_samples_) {
+        for (int i = 0; i < num_particles_; i++) {
+            if (lhs_samples_[i]) delete[] lhs_samples_[i];
+        }
+        delete[] lhs_samples_;
+        lhs_samples_ = nullptr;
+    }
+    
     // Free host memory
     if (particles_) {
         if (particles_->position) free(particles_->position);
@@ -773,7 +756,6 @@ void PSOOptimizer::cleanup() {
     if (aux_) { cudaFree(aux_); aux_ = nullptr; }
     if (aux_pos_) { cudaFree(aux_pos_); aux_pos_ = nullptr; }
 
-    // Destroy CUDA events
     if (start_event_) { cudaEventDestroy(start_event_); start_event_ = nullptr; }
     if (stop_event_) { cudaEventDestroy(stop_event_); stop_event_ = nullptr; }
 }
