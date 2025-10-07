@@ -8,7 +8,10 @@ inline constexpr double DEG{PI/180.0};         // Degrees to radians conversion-
 inline constexpr double RAD{180.0/PI};         // Radians to degrees conversion---, deg/rad
 
 // SIM parameters
+
 inline constexpr double T_0{2.4};              // Time horizon initial guess------, s
+inline constexpr double T_min{0.0};            // Minimum time horizon-----------, s
+inline constexpr double T_max{6.0};           // Maximum time horizon-----------, s
 inline constexpr int n_stp{50};                 // Number of time steps------------, -
 inline constexpr double dt_0{T_0/n_stp};        // Time step initial guess---------, s
 inline constexpr double dt_min{0.00001};       // Minimum time step---------------, s
@@ -26,8 +29,15 @@ inline constexpr double i_x{1.0};              // Moment of inertia around x-axi
 inline constexpr double i_y{1.0};              // Moment of inertia around y-axis-, kg*m^2
 inline constexpr double i_z{1.0};              // Moment of inertia around z-axis-, kg*m^2
 
+// State limits
+inline constexpr double q_max{1.0};            // Maximum quaternion component----, -
+inline constexpr double q_min{-q_max};         // Minimum quaternion component----, - -
+inline constexpr double w_max{3.0};            // Maximum angular velocity--------, rad/s
+inline constexpr double w_min{-w_max};         // Minimum angular velocity--------, rad/s
+
 // Actuator limits
 inline constexpr double tau_max{1.0};          // Maximum torque------------------, Nm
+inline constexpr double tau_min{-tau_max};     // Minimum torque------------------, Nm
 inline constexpr double tau_dot_max{1.0};      // Maximum torque rate of change---, Nm/s
 
 

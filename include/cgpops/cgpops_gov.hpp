@@ -12,7 +12,7 @@
 
 #include "nlpGlobVarExt.hpp"
 #include "cgpopsFuncDec.hpp"
-#include "cgpopsAuxExt.hpp"
+#include <cgpops/cgpopsAuxExt.hpp>
 
 
 // $#$#$

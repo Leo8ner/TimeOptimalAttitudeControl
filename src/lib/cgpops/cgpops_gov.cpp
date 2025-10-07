@@ -6,7 +6,7 @@
 // Time-optimal attitude maneuver problem
 
 
-#include "cgpops_gov.hpp"
+#include <cgpops/cgpops_gov.hpp>
 
 #define qo       x[0]
 #define q1       x[1]
@@ -47,15 +47,15 @@ template <class T> void Q3Dot::eq_def(T& lhs, T* x, T* u, T& t, T* s, T* p)
 }
 template <class T> void WXDot::eq_def(T& lhs, T* x, T* u, T& t, T* s, T* p)
 {
-    lhs = 1.0/Ix*((Iy - Iz)*wy*wz + tx);
+    lhs = 1.0/i_x*((i_y - i_z)*wy*wz + tx);
 }
 template <class T> void WYDot::eq_def(T& lhs, T* x, T* u, T& t, T* s, T* p)
 {
-    lhs = 1.0/Iy*((Iz - Ix)*wx*wz + ty);
+    lhs = 1.0/i_y*((i_z - i_x)*wx*wz + ty);
 }
 template <class T> void WZDot::eq_def(T& lhs, T* x, T* u, T& t, T* s, T* p)
 {
-    lhs = 1.0/Iz*((Ix - Iy)*wx*wy + tz);
+    lhs = 1.0/i_z*((i_x - i_y)*wx*wy + tz);
 }
 
 void MinTf::eval_eq(double& lhs, double** x0, double** xf, double** q, double** t0,

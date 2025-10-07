@@ -9,9 +9,10 @@
 #ifndef __CGPOPS_MAIN_HPP__
 #define __CGPOPS_MAIN_HPP__
 
-#include "cgpopsFuncDec.hpp"
 #include "nlpGlobVarExt.hpp"
-#include "cgpopsAuxExt.hpp"
+#include <cgpops/cgpopsAuxExt.hpp>
+#include <cgpops/cgpopsAuxDec.hpp>
+#include <cgpops/cgpops_gov.hpp>
 #include <vector>
 
 

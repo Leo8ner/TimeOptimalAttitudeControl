@@ -1,4 +1,4 @@
-#include "helper_functions.h"
+#include <cgpops/helper_functions.h>
 
 using namespace std;
 

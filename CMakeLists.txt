@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 Project(TimeOptimalAttitudeControl)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_C_COMPILER "/usr/bin/gcc")
 set(CMAKE_CXX_COMPILER "/usr/bin/g++")
 
@@ -31,9 +33,8 @@ message(STATUS "CUDA version: ${CUDAToolkit_VERSION}")
 # Find pkg-config for IPOPT detection (required by cgpops)
 find_package(PkgConfig REQUIRED)
 
-# Set cgpops directory
-set(CGPOPS_DIR "/home/leo8ner/cgpops")
-set(CGPOPS_FUNC_DIR "${CGPOPS_DIR}/src")
+# Set cgpops external library directory
+set(CGPOPS_EXT_DIR "/home/leo8ner/cgpops/src")
 
 # Use pkg-config to find IPOPT (cgpops requirement)
 pkg_check_modules(IPOPT_PKG REQUIRED ipopt)
@@ -135,6 +136,26 @@ else()
     message(FATAL_ERROR "Some SUNDIALS libraries not found. Please check SUNDIALS installation.")
 endif()
 
+# Collect external cgpops library source files
+file(GLOB CGPOPS_EXT_SOURCES 
+    "${CGPOPS_EXT_DIR}/cgpopsClassFuncDef.cpp"
+    "${CGPOPS_EXT_DIR}/MatClasses.cpp"
+    "${CGPOPS_EXT_DIR}/ASCIItable.cpp"
+    "${CGPOPS_EXT_DIR}/Bicomplex.cpp"
+    "${CGPOPS_EXT_DIR}/HyperDual.cpp"
+    "${CGPOPS_EXT_DIR}/LGRClass.cpp"
+    "${CGPOPS_EXT_DIR}/cgpopsFuncDef.cpp"
+    "${CGPOPS_EXT_DIR}/NLPDerivativesHD.cpp"
+    "${CGPOPS_EXT_DIR}/NLPDerivativesBC.cpp"
+    "${CGPOPS_EXT_DIR}/NLPDerivativesCD.cpp"
+    "${CGPOPS_EXT_DIR}/cgpops_nlp.cpp"
+    "${CGPOPS_EXT_DIR}/cgpopsMeshRef.cpp"
+    "${CGPOPS_EXT_DIR}/cgpopsHamiltonianDef.cpp"
+    "${CGPOPS_EXT_DIR}/find_polynomial_roots_jenkins_traub.cc"
+    "${CGPOPS_EXT_DIR}/polynomial.cc"
+    "${CGPOPS_EXT_DIR}/OCPFunctions.cpp"
+)
+
 # Create the library
 add_library(toac STATIC 
             src/lib/optimizer.cpp 
@@ -159,6 +180,14 @@ add_library(toac_shared SHARED
 
 ) 
 
+# Create cgpops library
+add_library(cgpops STATIC 
+    src/lib/cgpops/cgpops_main.cpp
+    src/lib/cgpops/cgpops_gov.cpp
+    src/lib/cgpops/helper_functions.cpp
+    ${CGPOPS_EXT_SOURCES}
+)
+
 # Set CUDA properties
 set_property(TARGET toac PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 set_property(TARGET toac_shared PROPERTY CUDA_SEPARABLE_COMPILATION ON)
@@ -178,6 +207,20 @@ target_include_directories(toac_shared PUBLIC
     ${CUDAToolkit_INCLUDE_DIRS}
 )
 
+target_include_directories(cgpops PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/cgpops
+    ${CMAKE_SOURCE_DIR}/include/toac  # For constants used by cgpopsAuxDec.hpp
+    /home/leo8ner/cgpops
+    ${CGPOPS_EXT_DIR}
+    ${IPOPT_PKG_INCLUDE_DIRS}
+)
+
+target_compile_definitions(cgpops PRIVATE
+    IPOPT_BUILD
+    SRC_PATH="${CGPOPS_EXT_DIR}"
+)
+
 # CORRECT: Link libraries to toac
 target_link_libraries(toac PUBLIC
     ${CASADI_LIBRARIES}
@@ -195,45 +238,53 @@ target_link_libraries(toac_shared PUBLIC
     CUDA::cusolver
 )
 
-set_target_properties(toac_shared PROPERTIES
-    VERSION 1.0
-    SOVERSION 1
-    PREFIX "lib"
-)
-
-file(GLOB CGPOPS_SOURCES ${CGPOPS_FUNC_DIR}/*.cpp)
-
-# Create cgpops library
-add_library(cgpops STATIC ${CGPOPS_SOURCES})
-
-target_include_directories(cgpops PUBLIC
-    ${CGPOPS_DIR}
-    ${CGPOPS_FUNC_DIR}
-    ${IPOPT_PKG_INCLUDE_DIRS}
-)
-
-target_compile_definitions(cgpops PRIVATE
-    IPOPT_BUILD
-    SRC_PATH="${CGPOPS_FUNC_DIR}"
-)
-
-target_compile_options(cgpops PRIVATE
-    -O3 -pipe
-    ${IPOPT_PKG_CFLAGS_OTHER}
-)
-
 target_link_libraries(cgpops PUBLIC
     ${IPOPT_PKG_LIBRARIES}
 )
 
 target_link_directories(cgpops PUBLIC
     ${IPOPT_PKG_LIBRARY_DIRS}
+    ${CGPOPS_EXT_DIR}
 )
+
+target_compile_options(cgpops PRIVATE
+    -O3 -pipe
+    -Wno-unknown-pragmas
+    -Wno-long-long
+    -Wno-unused-parameter
+    -Wno-maybe-uninitialized
+    -Wno-unused-but-set-variable
+    -Wno-deprecated-declarations
+    -Wno-format-truncation
+    -Wno-ignored-qualifiers
+    -Wno-unused-variable
+    -Wno-deprecated-enum-enum-conversion
+    -Wno-int-in-bool-context
+    -Wno-deprecated-copy
+    ${IPOPT_PKG_CFLAGS_OTHER}
+)
+
+target_compile_options(toac PRIVATE
+    -Wno-unused-parameter
+)
+
+target_compile_options(toac_shared PRIVATE
+    -Wno-unused-parameter
+)
+
+set_target_properties(toac_shared PROPERTIES
+    VERSION 1.0
+    SOVERSION 1
+    PREFIX "lib"
+)
+
 
 # include header directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/toac
+    ${CMAKE_SOURCE_DIR}/include/cgpops
+    ${CGPOPS_EXT_DIR}
     SYSTEM ${IPOPT_INCLUDE_DIRS}
     SYSTEM ${CASADI_INCLUDE_DIR}
     SYSTEM ${SUNDIALS_INCLUDE_DIR}
@@ -245,6 +296,10 @@ include_directories(
 file(GLOB HEADER_FILES_HPP ${CMAKE_SOURCE_DIR}/include/*.hpp)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/*.h)
 file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/toac/*.h)
+file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/cgpops/*.h)
+file(GLOB HEADER_FILES_H ${CMAKE_SOURCE_DIR}/include/cgpops/*.hpp)
+file(GLOB HEADER_FILES_H ${CGPOPS_EXT_DIR}/*.h)
+file(GLOB HEADER_FILES_H ${CGPOPS_EXT_DIR}/*.hpp)
 
 add_executable(GenerateCode src/serial/c_code_gen.cpp)
 
@@ -301,8 +356,27 @@ target_link_libraries(GenerateSamples PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(GenerateSamples PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 add_executable(MCS src/montecarlo/mcs.cpp)
-target_link_libraries(MCS PRIVATE ${CASADI_LIBRARIES} toac)
-target_include_directories(MCS PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+target_link_libraries(MCS PRIVATE ${CASADI_LIBRARIES} toac cgpops)
+target_include_directories(MCS PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac ${CMAKE_SOURCE_DIR}/include/cgpops)
+
+# Create run_cgpops executable
+add_executable(run_cgpops src/cgpops/cgpops_wrapper.cpp)
+
+target_include_directories(run_cgpops PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/cgpops
+    ${CGPOPS_EXT_DIR}
+    ${CMAKE_SOURCE_DIR}/include/toac
+)
+
+target_link_libraries(run_cgpops PRIVATE
+    cgpops
+)
+
+target_compile_options(run_cgpops PRIVATE
+    -Wno-deprecated-declarations
+    -Wno-ignored-qualifiers
+)
 
 # Runs GenerateCode automatically after build
 add_custom_target(run_codegen_serial

@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
 
         // DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
 
-        // extractInitialGuess("../output/initial_guess.csv", X_guess, U_guess, dt_guess);
+        // extractInitialGuess("../input/initial_guess.csv", X_guess, U_guess, dt_guess);
 
         DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
 

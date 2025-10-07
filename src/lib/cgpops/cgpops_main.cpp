@@ -5,7 +5,7 @@
 // Test CGPOPS functions
 //
 
-#include "cgpops_main.hpp"
+#include <cgpops/cgpops_main.hpp>
 
 
 void cgpops_go(doubleMat& cgpopsResults, const std::vector<double>& initial_state, const std::vector<double>& final_state)
@@ -142,12 +142,12 @@ void cgpops_go(doubleMat& cgpopsResults, const std::vector<double>& initial_stat
     xfg1[4] = w1_f;   xfg1[5] = w2_f;   xfg1[6] = w3_f;
 
     // Control guess (torques)
-    u0g1[0] = 0.1;    u0g1[1] = 0.1;    u0g1[2] = 0.1;
-    ufg1[0] = -0.1;   ufg1[1] = -0.1;   ufg1[2] = -0.1;
+    u0g1[0] = 1;    u0g1[1] = 1;    u0g1[2] = 1;
+    ufg1[0] = -1;   ufg1[1] = -1;   ufg1[2] = -1;
 
     // Time guess
     t0g1 = 0;
-    tfg1 = 2.4;  // Guess 2.4 seconds for rest-to-rest 180 deg rotation
+    tfg1 = T_0;  // Guess 2.4 seconds for rest-to-rest 180 deg rotation
     
     // Set parameterized constructor for NLP Phase Guess Class
     setNLPPGG(phase1,x0g1,xfg1,u0g1,ufg1,qg1,t0g1,tfg1);

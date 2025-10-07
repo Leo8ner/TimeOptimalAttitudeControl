@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
         std::tie(X_f, angles_f) = parseStateVector(argv[2]);
 
         DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
-        std::string csv_data = "../output/initial_guess.csv"; // Path to the CSV file for initial guess
+        std::string csv_data = "../input/initial_guess.csv"; // Path to the CSV file for initial guess
         extractInitialGuess(csv_data, X_guess, U_guess, dt_guess);
 
         std::string prefix_lib = std::filesystem::current_path().parent_path().string() + "/build/";

@@ -21,7 +21,7 @@
 #include <map>
 #include <cmath>
 
-#include "cgpopsAuxExt.hpp"
+#include <cgpops/cgpopsAuxExt.hpp>
 
 using namespace std;
 
