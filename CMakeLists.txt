@@ -164,7 +164,8 @@ add_library(toac STATIC
             src/lib/CustomCallback.cpp
             src/lib/CUDAoptimizer.cpp
             src/lib/external_rk4.cpp
-            src/lib/pso.cu
+            #src/lib/pso.cu
+            src/lib/new_pso.cu
             src/lib/helper_functions.cpp
             src/lib/lhs.cpp
 ) 
@@ -266,10 +267,14 @@ target_compile_options(cgpops PRIVATE
 
 target_compile_options(toac PRIVATE
     -Wno-unused-parameter
+    -Wno-unused-result
+    -Wno-deprecated-gpu-targets
 )
 
 target_compile_options(toac_shared PRIVATE
     -Wno-unused-parameter
+    -Wno-unused-result
+    -Wno-deprecated-gpu-targets
 )
 
 set_target_properties(toac_shared PROPERTIES
@@ -376,6 +381,7 @@ target_link_libraries(run_cgpops PRIVATE
 target_compile_options(run_cgpops PRIVATE
     -Wno-deprecated-declarations
     -Wno-ignored-qualifiers
+    -Wno-unused-result
 )
 
 # Runs GenerateCode automatically after build

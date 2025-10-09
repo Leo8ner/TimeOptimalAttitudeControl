@@ -14,8 +14,8 @@ inline constexpr double T_min{0.0};            // Minimum time horizon----------
 inline constexpr double T_max{6.0};           // Maximum time horizon-----------, s
 inline constexpr int n_stp{50};                 // Number of time steps------------, -
 inline constexpr double dt_0{T_0/n_stp};        // Time step initial guess---------, s
-inline constexpr double dt_min{0.00001};       // Minimum time step---------------, s
-inline constexpr double dt_max{0.1};           // Maximum time step---------------, s
+inline constexpr double dt_min{0.0};       // Minimum time step---------------, s
+inline constexpr double dt_max{0.15};           // Maximum time step---------------, s
 inline constexpr int n_states{7};              // Number of states----------------, -
 inline constexpr int n_quat{4};             // Number of quaternions------------------, -
 inline constexpr int n_vel{3};              // Number of angular velocities-----, -

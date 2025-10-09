@@ -64,18 +64,18 @@ Function get_solver();
 /**
  * @brief Compute the skew-symmetric matrix for a 4D vector
  * @param w 4D vector (angular velocity)
- * @return Skew-symmetric matrix as SX object
+ * @return Skew-symmetric matrix as MX object
  */
-SX skew4(const SX& w);
+MX skew4(const MX& w);
 
 /**
  * @brief Perform one step of RK4 integration
- * @param x_dot Derivative function (as SX)
- * @param x Current state (as SX)
- * @param dt Time step (as SX)
- * @return Next state after time step dt (as SX)
+ * @param x_dot Derivative function (as MX)
+ * @param x Current state (as MX)
+ * @param dt Time step (as MX)
+ * @return Next state after time step dt (as MX)
  */
-SX rk4(const SX& x_dot, const SX& x, const SX& dt);
+MX rk4(const MX& x_dot, const MX& x, const MX& dt);
 
 /**
  * @brief Export trajectory data to CSV file
@@ -85,28 +85,35 @@ SX rk4(const SX& x_dot, const SX& x, const SX& dt);
  * @param dt Time step vector [1 x n_steps]
  * @param filename Output CSV file path
  */
-void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const std::string& filename);
+void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const DM& angles_0, const DM& angles_f, const std::string& filename);
 
 /**
  * @brief Convert quaternion to Euler angles (ZYX convention)
  * @param quat Quaternion as DM object [4 x 1]
  * @return Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  */
-double unwrapAngle(double current_angle, double previous_angle);
+double unwrapAngle(double current, double previous, double target);
 
 /**
  * @brief Convert quaternion to Euler angles (ZYX convention)
  * @param euler_angles Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  * @param q Quaternion as DM object [4 x 1]
  */
-DM quat2euler(const DM& euler_angles, const DM& q);
+DM quat2euler(const DM& euler_prev, const DM& q, const DM& euler_target);
 
 /**
  * @brief Parse initial and final state vectors from command line arguments
  * @param initial_state Comma-separated string with 6 values: roll_i,pitch_i,yaw_i,wx_i,wy_i,wz_i (degrees)
  * @param final_state Comma-separated string with 6 values: roll_f,pitch_f,yaw_f,wx_f,wy_f,wz_f (degrees)
- * @return Tuple containing (X_0, X_f) as DM objects
+ * @return Tuple containing (X_0, X_f, angles_0, angles_f) as DM objects
  */
-std::tuple<DM, DM> parseInput(const std::string& initial_state, const std::string& final_state);
+std::tuple<DM, DM, DM, DM> parseInput(const std::string& initial_state, const std::string& final_state);
+
+/**
+ * @brief Normalize angle to range [-180, 180] degrees
+ * @param angle Angle in degrees
+ * @return Normalized angle in degrees
+ */
+double normalizeAngle(double angle);
 
 #endif /* HELPER_FUNCTIONS_H */

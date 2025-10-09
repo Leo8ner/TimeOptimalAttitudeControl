@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
         // Sample points using Latin Hypercube Sampling
         LHS lhs(iterations, 6);
         double max_angle = 180.0 * DEG; // rad
-        double max_vel = 100.0 * DEG;   // rad/s
+        double max_vel = 0.0 * DEG;   // rad/s
         
         std::vector<double> mins = {-max_angle, -max_angle, -max_angle, -max_vel, -max_vel, -max_vel};
         std::vector<double> maxs = { max_angle,  max_angle,  max_angle,  max_vel,  max_vel,  max_vel};
@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
         csv_file << "q0_i,q1_i,q2_i,q3_i,wx_i,wy_i,wz_i,"
                 << "q0_f,q1_f,q2_f,q3_f,wx_f,wy_f,wz_f\n";
         
-        csv_file << std::fixed << std::setprecision(6);
+        csv_file << std::fixed << std::setprecision(12);
         
         // Write data
         for (int i = 0; i < iterations; ++i) {

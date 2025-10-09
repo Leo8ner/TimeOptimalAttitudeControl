@@ -5,8 +5,10 @@
 #include <cstdlib>
 #include <toac/lhs.h>
 #include <toac/helper_functions.h>
+//#include <cgpops/cgpops_main.hpp>
 #include <fstream>
 #include <sstream>
+#include <cmath>
 
 using namespace casadi;
 
@@ -53,7 +55,7 @@ int main() {
     int iterations = initial_states.size();
 
     DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
-    extractInitialGuess("../output/initial_guess.csv", X_guess, U_guess, dt_guess);
+    extractInitialGuess("../input/initial_guess.csv", X_guess, U_guess, dt_guess);
 
     DM X_guess_pso(n_states, (n_stp + 1)), U_guess_pso(n_controls, n_stp), dt_guess_pso(n_stp, 1); // Initial guesses for states, controls, and time steps
     PSOOptimizer initial_guess(X_guess_pso, U_guess_pso, dt_guess_pso, false); // Create PSO optimizer instance
@@ -69,7 +71,7 @@ int main() {
     // Write header
     results_file << "T_default,solve_time,T_pso,pso_time,solve_time,"
                 << "total_time,sol_comparison,time_comparison,status\n";
-    results_file << std::fixed << std::setprecision(6);
+    results_file << std::fixed << std::setprecision(3);
 
     // Progress tracking
     auto total_start = std::chrono::high_resolution_clock::now();
@@ -168,10 +170,14 @@ int main() {
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - total_start).count();
             double time_left = (static_cast<double>(elapsed) / (i + 1)) * (iterations - (i + 1));
             double progress = 100.0 * (i + 1) / iterations;
+            int mins = elapsed / 60;
+            int secs = elapsed % 60;
+            int mins_left = time_left / 60;
+            int secs_left = fmod(time_left, 60);
             std::cout << "Progress: " << (i + 1) << "/" << iterations
                     << " (" << std::fixed << std::setprecision(1) << progress << "%)" << std::endl
-                    << "Elapsed time: " << std::setprecision(1) << (elapsed / 60.0) << " min, "
-                    << "Estimated time left: " << std::setprecision(1) << (time_left / 60.0) << " min" << std::endl;
+                    << "Elapsed time: " << std::setprecision(1) << mins << " min " << secs << " sec, "
+                    << "Estimated time left: " << std::setprecision(1) << mins_left << " min " << secs_left << " sec" << std::endl;
         }
         
         // Reset status for next iteration
@@ -180,9 +186,11 @@ int main() {
     }
 
     results_file.close();
-    std::cout << "Results logged to ../output/mcs_results.csv" << std::endl;
+    std::cout << "Results logged to ../output/optimization_results.csv" << std::endl;
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_elapsed = std::chrono::duration_cast<std::chrono::seconds>(total_end - total_start).count();
-    std::cout << "Completed in " << std::setprecision(1) << (total_elapsed / 60.0) << " minutes" << std::endl;    
+    int mins = total_elapsed / 60;
+    int secs = total_elapsed % 60;
+    std::cout << "Completed in " << mins << " minutes and " << secs << " seconds" << std::endl;    
     return 0;
 }

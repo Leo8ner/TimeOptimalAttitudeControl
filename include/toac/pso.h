@@ -53,10 +53,10 @@
  *============================================================================*/
 
 /** @brief Maximum PSO iterations for optimization convergence */
-#define MAX_ITERA 100
+#define MAX_ITERA 200
 
 /** @brief Total number of particles in swarm */
-#define N_PARTICLES 640
+#define N_PARTICLES 1280
 
 /** @brief CUDA threads per block (must be multiple of 32, ≤ 1024) */
 #define ThreadsPerBlock 128
@@ -78,7 +78,7 @@
 #define C2 1.5f
 
 /** @brief Minimum inertia weight for adaptive inertia */
-#define MIN_W 0.1f
+#define MIN_W 0.4f
 
 /** @brief Enable inertia weight decay over iterations (1=enable, 0=disable) */
 #define DEC_INERTIA 1
@@ -94,7 +94,7 @@
 #define FINAL_STATE_PENALTY 1000.0f
 
 /** @brief Penalty for excessive torque switching */
-#define SWITCH_PENALTY 0.1f
+#define SWITCH_PENALTY 0.0f
 
 /** @brief Penalty coefficient for maneuver time minimization */
 #define DT_PENALTY 10.0f
@@ -398,9 +398,10 @@ private:
     void generateLHSSamples(float** samples);
     
     /**
-     * @brief Extract results from optimization
+     * @brief Extract results from optimization and populate output DMs
+     * @return true on success, false on error and on invalid results
      */
-    void extractResults();
+    bool extractResults();
     
     /**
      * @brief CUDA error handling function

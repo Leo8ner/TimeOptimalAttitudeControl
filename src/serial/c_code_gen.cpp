@@ -12,13 +12,14 @@ namespace fs = std::filesystem;
 int main(){
 
     std::string plugin = "fatrop"; // Specify the solver plugin to use
+    std::string method = "shooting"; // Specify the integration method to use
     bool fixed_step = true; // Use fixed step size for the integrator
 
     // Dynamics
-    Dynamics dyn(plugin); // Create an instance of the Dynamics class
+    Dynamics dyn(plugin, method); // Create an instance of the Dynamics class
 
     // Solver
-    Optimizer opti(dyn.F, plugin, fixed_step);     // Create an instance of the Optimizer class
+    Optimizer opti(dyn, fixed_step);     // Create an instance of the Optimizer class
 
     // options for c-code auto generation
     Dict opts = Dict();

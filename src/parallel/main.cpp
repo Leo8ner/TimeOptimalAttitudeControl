@@ -58,10 +58,8 @@ int main(int argc, char* argv[]) {
         auto start = std::chrono::high_resolution_clock::now();
 
         // Parse command line arguments
-        DM X_0, angles_0;
-        std::tie(X_0, angles_0) = parseStateVector(argv[1]);
-        DM X_f, angles_f;
-        std::tie(X_f, angles_f) = parseStateVector(argv[2]);
+        DM X_0, X_f, angles_0, angles_f;
+        std::tie(X_0, X_f, angles_0, angles_f) = parseInput(argv[1], argv[2]);
 
         DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
         std::string csv_data = "../input/initial_guess.csv"; // Path to the CSV file for initial guess

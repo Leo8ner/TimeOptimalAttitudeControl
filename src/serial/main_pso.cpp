@@ -4,7 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <toac/helper_functions.h>
-#include <toac/pso.h>
+#include <toac/new_pso.h>
 #include <cstdlib>
 
 using namespace casadi;
@@ -21,10 +21,8 @@ int main(int argc, char* argv[]) {
         auto start = std::chrono::high_resolution_clock::now();
 
         // Parse command line arguments
-        casadi::DM X_0, angles_0;
-        std::tie(X_0, angles_0) = parseStateVector(argv[1]);
-        casadi::DM X_f, angles_f;
-        std::tie(X_f, angles_f) = parseStateVector(argv[2]);
+        DM X_0, X_f, angles_0, angles_f;
+        std::tie(X_0, X_f, angles_0, angles_f) = parseInput(argv[1], argv[2]);
 
         DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
 
@@ -71,9 +69,9 @@ int main(int argc, char* argv[]) {
         std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;
 
         DMDict PSOresults = {{"X", X_guess}, {"U", U_guess}, {"T", sum(dt_guess)}, {"dt", dt_guess}};
-        // processResults(PSOresults, angles_0, angles_f);
+        processResults(PSOresults, angles_0, angles_f);
 
-        // processResults(result, angles_0, angles_f);
+        processResults(result, angles_0, angles_f);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

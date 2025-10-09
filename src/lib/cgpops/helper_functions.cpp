@@ -2,6 +2,16 @@
 
 using namespace std;
 
+// Computes the dot product of two vectors of doubles
+double dot(const vector<double>& a, const vector<double>& b) {
+    if (a.size() != b.size()) throw invalid_argument("Vectors must be the same size for dot product");
+    double result = 0.0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        result += a[i] * b[i];
+    }
+    return result;
+}
+
 // Converts Euler angles to a quaternion
 vector<double> euler2quat(const double& phi, const double& theta, const double& psi) {
     double q0 = cos(phi/2) * cos(theta/2) * cos(psi/2) + sin(phi/2) * sin(theta/2) * sin(psi/2);
@@ -33,60 +43,73 @@ vector<double> euler2quat(const double& phi, const double& theta, const double& 
 }
 
 // Parse state vector from string
-vector<double> parseStateVector(const string& input) {
-    vector<double> values;
-    istringstream stream(input);
+vector<vector<double>> parseStateVector(const string& initial_state, const string& final_state) {
+    vector<double> values_0, values_f;
+    istringstream stream_0(initial_state), stream_f(final_state);
     string token;
-    
-    while (getline(stream, token, ',')) {
-        values.push_back(stod(token));
+
+    while (getline(stream_0, token, ',')) {
+        values_0.push_back(stod(token));
     }
-    
-    if (values.size() != 6) {
+
+    while (getline(stream_f, token, ',')) {
+        values_f.push_back(stod(token));
+    }
+
+    if (values_0.size() != 6 || values_f.size() != 6) {
         throw invalid_argument("State vector must have exactly 6 elements");
     }
     
-    // Normalize angles to (-180, 180]
-    double normalized_angles[3];
-    for (int i = 0; i < 3; ++i) {
-        double angle = fmod(values[i], 360.0);
-        if (angle <= -180.0) {
-            angle += 360.0;
-        } else if (angle > 180.0) {
-            angle -= 360.0;
-        }
-        normalized_angles[i] = angle;
-    }
-    
     // Convert to quaternion
-    vector<double> quat = euler2quat(
-        normalized_angles[0] * DEG, 
-        normalized_angles[1] * DEG, 
-        normalized_angles[2] * DEG
+    vector<double> quat_0 = euler2quat(
+        values_0[0] * DEG, 
+        values_0[1] * DEG, 
+        values_0[2] * DEG
     );
-    
+
+    vector<double> quat_f = euler2quat(
+        values_f[0] * DEG, 
+        values_f[1] * DEG, 
+        values_f[2] * DEG
+    );
+
+    if (dot(quat_0, quat_f) < 0) {
+        for (double& q : quat_f) {
+            q = -q;
+        }
+    }
+
     // Build state vector: [q0, q1, q2, q3, omega_x, omega_y, omega_z]
-    vector<double> state;
-    state.reserve(7);
-    
+    vector<double> state_0, state_f;
+    state_0.reserve(n_states);
+    state_f.reserve(n_states);
+
     // Add quaternion
-    for (double q : quat) {
-        state.push_back(q);
+    for (double q : quat_0) {
+        state_0.push_back(q);
+    }
+
+    for (double q : quat_f) {
+        state_f.push_back(q);
     }
     
     // Add angular velocities (converted to radians)
     for (int i = 3; i < 6; ++i) {
-        state.push_back(values[i] * DEG);
+        state_0.push_back(values_0[i] * DEG);
+        state_f.push_back(values_f[i] * DEG);
     }
     
     // Clean up near-zero values
     for (int i = 0; i < 7; ++i) {
-        if (abs(state[i]) < 1e-6) {
-            state[i] = 0.0;
+        if (abs(state_0[i]) < 1e-6) {
+            state_0[i] = 0.0;
+        }
+        if (abs(state_f[i]) < 1e-6) {
+            state_f[i] = 0.0;
         }
     }
-    
-    return state;
+
+    return {state_0, state_f};
 }
 
 void parseMatlab(

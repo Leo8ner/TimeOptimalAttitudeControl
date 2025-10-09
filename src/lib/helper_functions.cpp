@@ -334,8 +334,15 @@ void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const DM& a
     std::cout << "Exported trajectory to " << filename << "\n";
 }
 
+double normalizeAngle(double angle) {
+    angle = fmod(angle + 180.0, 360.0);
+    if (angle < 0)
+        angle += 360.0;
+    return angle - 180.0;
+}
+
 // Add this helper function before main()
-std::tuple<DM, DM> parseInput(const std::string& initial_state, const std::string& final_state) {
+std::tuple<DM, DM, DM, DM> parseInput(const std::string& initial_state, const std::string& final_state) {
     std::vector<double> initial_values, final_values;
     std::istringstream initial_stream(initial_state);
     std::istringstream final_stream(final_state);
@@ -353,17 +360,37 @@ std::tuple<DM, DM> parseInput(const std::string& initial_state, const std::strin
         throw std::invalid_argument("State vector must have exactly 6 elements");
     }
 
-    DM quat_i = euler2quat(0, 0, 0);
+    double normalized_angles_0[3], normalized_angles_f[3];
+    for (int i = 0; i < 3; ++i) {
+        normalized_angles_0[i] = normalizeAngle(initial_values[i]);
+        normalized_angles_f[i] = normalizeAngle(final_values[i]);
+    }
+
+    DM angles_0 = DM::vertcat({normalized_angles_0[0], normalized_angles_0[1], normalized_angles_0[2]});
+    DM angles_f = DM::vertcat({normalized_angles_f[0], normalized_angles_f[1], normalized_angles_f[2]});
+
+    DM quat_i = euler2quat(initial_values[0] * DEG, initial_values[1] * DEG, initial_values[2] * DEG);
     DM omega_i = DM::vertcat({initial_values[3] * DEG, initial_values[4] * DEG, initial_values[5] * DEG});
 
-    double phi_f = (final_values[0] - initial_values[0]) * DEG;
-    double theta_f = (final_values[1] - initial_values[1]) * DEG;
-    double psi_f = (final_values[2] - initial_values[2]) * DEG;
-    DM quat_f = euler2quat(phi_f, theta_f, psi_f);
+    DM quat_f = euler2quat(final_values[0] * DEG, final_values[1] * DEG, final_values[2] * DEG);
     DM omega_f = DM::vertcat({final_values[3] * DEG, final_values[4] * DEG, final_values[5] * DEG});
+
+    if (dot(quat_i, quat_f).scalar() < 0) {
+        quat_f = -quat_f;
+    }
+
     DM X_0 = DM::vertcat({quat_i, omega_i});
     DM X_f = DM::vertcat({quat_f, omega_f});
 
-    return std::make_tuple(X_0, X_f);
+    for (int i = 0; i < n_states; ++i) {
+        if (abs(X_0(i).scalar()) < 1e-6) {
+            X_0(i) = 0.0;  // Clean up near-zero values
+        }
+        if (abs(X_f(i).scalar()) < 1e-6) {
+            X_f(i) = 0.0;  // Clean up near-zero values
+        }
+    }
+
+    return std::make_tuple(X_0, X_f, angles_0, angles_f);
 }
 

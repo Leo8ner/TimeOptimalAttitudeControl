@@ -640,8 +640,11 @@ bool PSOOptimizer::optimize(bool regenerate_lhs) {
     total_time_ = dt_opt_ * N_STEPS;
     final_fitness_ = gbest_.fitness;
     exec_time_ = exec_time_ / 1000.0f;
-    
-    extractResults();
+
+    if (!extractResults()) {
+        std::cerr << "Error extracting results or invalid results" << std::endl;
+        return false;
+    }
 
     results_valid_ = true;
     configured_ = true;
@@ -653,11 +656,11 @@ bool PSOOptimizer::optimize(bool regenerate_lhs) {
     return true;
 }
 
-void PSOOptimizer::extractResults() {
+bool PSOOptimizer::extractResults() {
 
     double dt_double = static_cast<double>(dt_opt_);
 
-    // Simulate trajectory using RK4 for high accuracy
+    // Simulate trajectory 
     float current_state[n_states], next_state[n_states];
     
     // Initialize with initial conditions
@@ -687,6 +690,21 @@ void PSOOptimizer::extractResults() {
 
         dt(step) = dt_double;
     }
+
+    float final_error = 0.0f;
+    for(int i = 0; i < n_quat; i++) {
+        final_error += pow(current_state[i] - att_params_.target_quat[i], 2);
+    }
+    for(int i = 0; i < n_vel; i++) {
+        final_error += pow(current_state[n_quat+i] - att_params_.target_omega[i], 2);
+    }
+    final_error = sqrt(final_error);
+    if (final_error > 1e-3f) {
+        std::cerr << "Warning: Final state deviates significantly from target state. Final error: " 
+                  << final_error << std::endl;
+        return false;
+    }
+    return true;
 }
 
 bool PSOOptimizer::getStats(double& final_fitness, double& setup_time, double& exec_time) const {

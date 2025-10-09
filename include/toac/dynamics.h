@@ -13,9 +13,10 @@ using namespace casadi;
 
 struct Dynamics {
     
-    Function F; 
+    Function F;
+    std::string method, plugin; 
 
-    Dynamics(const std::string& plugin = "ipopt");
+    Dynamics(const std::string& plugin_ = "ipopt", const std::string& method_ = "shooting");
 };
 
 #endif // DYNAMICS_H

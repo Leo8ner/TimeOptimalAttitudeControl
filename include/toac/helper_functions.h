@@ -105,8 +105,15 @@ DM quat2euler(const DM& euler_prev, const DM& q, const DM& euler_target);
  * @brief Parse initial and final state vectors from command line arguments
  * @param initial_state Comma-separated string with 6 values: roll_i,pitch_i,yaw_i,wx_i,wy_i,wz_i (degrees)
  * @param final_state Comma-separated string with 6 values: roll_f,pitch_f,yaw_f,wx_f,wy_f,wz_f (degrees)
- * @return Tuple containing (X_0, X_f) as DM objects
+ * @return Tuple containing (X_0, X_f, angles_0, angles_f) as DM objects
  */
-std::tuple<DM, DM> parseInput(const std::string& initial_state, const std::string& final_state);
+std::tuple<DM, DM, DM, DM> parseInput(const std::string& initial_state, const std::string& final_state);
+
+/**
+ * @brief Normalize angle to range [-180, 180] degrees
+ * @param angle Angle in degrees
+ * @return Normalized angle in degrees
+ */
+double normalizeAngle(double angle);
 
 #endif /* HELPER_FUNCTIONS_H */

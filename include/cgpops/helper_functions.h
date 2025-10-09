@@ -27,10 +27,11 @@ using namespace std;
 
 /**
  * @brief Parse Euler angles and angular velocities into quaternion state vector
- * @param input Comma-separated string with 6 values: roll,pitch,yaw,wx,wy,wz (degrees)
- * @return vector containing [q0, q1, q2, q3, omega_x, omega_y, omega_z]
+ * @param initial_state Comma-separated string with 6 values: roll,pitch,yaw,wx,wy,wz (degrees)
+ * @param final_state Comma-separated string with 6 values: roll,pitch,yaw,wx,wy,wz (degrees)
+ * @return vector containing [q0, q1, q2, q3, omega_x, omega_y, omega_z] for both initial and final states
  */
-vector<double> parseStateVector(const string& input);
+vector<vector<double>> parseStateVector(const string& initial_state, const string& final_state);
 
 /**
  * @brief Convert Euler angles to a quaternion

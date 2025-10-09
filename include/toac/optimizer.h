@@ -4,6 +4,7 @@
 #include <casadi/casadi.hpp>
 #include <toac/symmetric_spacecraft.h>
 #include <toac/helper_functions.h>
+#include <toac/dynamics.h>
 
 using namespace casadi;
 
@@ -16,13 +17,14 @@ class Optimizer {
     Slice all;
     MX X, U, T, dt;
     MX p_X0, p_Xf;                      // Parameters
-    //DM X_guess, U_guess, dt_guess;     // Initial guesses for states, controls, and time steps
+    std::string plugin, method;       // Solver plugin and method
+
+    void SetDynamicConstraints();
 
 public:
 
     Function solver; // Solver function
-    Optimizer(const Function& dyn, const std::string& plugin = "ipopt", 
-               bool fixed_step = true);
+    Optimizer(const Dynamics& dyn, bool fixed_step = true);
 };
 
 #endif // OPTIMIZER_H

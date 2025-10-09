@@ -22,12 +22,10 @@ int main(int argc, char* argv[]) {
         // Start the timer
         // This is used to measure the time taken by the optimization process
         auto start = std::chrono::high_resolution_clock::now();
+        
         // Parse command line arguments
-
-        DM X_0, angles_0;
-        std::tie(X_0, angles_0) = parseStateVector(argv[1]);
-        DM X_f, angles_f;
-        std::tie(X_f, angles_f) = parseStateVector(argv[2]);
+        DM X_0, X_f, angles_0, angles_f;
+        std::tie(X_0, X_f, angles_0, angles_f) = parseInput(argv[1], argv[2]);
 
         // DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
 
@@ -53,14 +51,15 @@ int main(int argc, char* argv[]) {
         auto total_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - prepare_pso) / 1000.0;
 
 
-        std::string plugin = "fatrop"; // Specify the solver plugin to use
+        std::string plugin = "ipopt"; // Specify the solver plugin to use
+        std::string method = "collocation"; // Specify the integration method to use
         bool fixed_step = true; // Use fixed step size for the integrator
 
         // Dynamics
-        Dynamics dyn(plugin); // Create an instance of the Dynamics class
+        Dynamics dyn(plugin, method); // Create an instance of the Dynamics class
 
         // Solver
-        Optimizer opti(dyn.F, plugin, fixed_step);     // Create an instance of the Optimizer class
+        Optimizer opti(dyn, fixed_step);     // Create an instance of the Optimizer class
 
         // Call the solver with parsed inputs
         DMDict inputs = {{"X0", X_0}, {"Xf", X_f}, 

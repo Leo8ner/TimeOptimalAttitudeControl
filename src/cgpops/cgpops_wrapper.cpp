@@ -22,9 +22,9 @@ int main(int argc, char* argv[])
     }
 
     // Parse command line arguments
-    std::vector<double> initial_state, final_state;
-    initial_state = parseStateVector(argv[1]);
-    final_state = parseStateVector(argv[2]);
+    std::vector<std::vector<double>> input = parseStateVector(argv[1], argv[2]);
+    std::vector<double> initial_state = input[0];
+    std::vector<double> final_state = input[1];
 
     printf("\nCGPOPS TESTING\n\n\n");
     
@@ -48,8 +48,8 @@ int main(int argc, char* argv[])
                             // (default=4)
     maxColPtsG      = 10;    // Maximum number of collocation points used in an interval
                             // (default=10)
-    maxMeshIterG    = 1;   // Maximum number of mesh iterations (default=20)
-    meshTolG        = 1e-4; // Mesh tolerance (default=1e-7)
+    maxMeshIterG    = 10;   // Maximum number of mesh iterations (default=20)
+    meshTolG        = 1e-7; // Mesh tolerance (default=1e-7)
     
     // Output save settings
     saveIPOPTFlagG       = 1;   // Save IPOPT solution (default=1)
@@ -59,9 +59,9 @@ int main(int argc, char* argv[])
     
     // IPOPT settings
     runIPOPTFlagG   = 1;    // Run IPOPT (default=1)
-    NLPtolG         = 1e-9; // NLP Solver tolerance (default=1e-7)
-    NLPmaxiterG     = 5000; // Maximum number of iterations allowed for NLP solver
-    useLTIHDDG      = 0;    // Indicates usage of bang-bang control detection
+    NLPtolG         = 1e-7; // NLP Solver tolerance (default=1e-7)
+    NLPmaxiterG     = 1000; // Maximum number of iterations allowed for NLP solver
+    useLTIHDDG      = 1;    // Indicates usage of bang-bang control detection
     
     /*-----------------------Changes to global parameter settings-----------------------*/
     
