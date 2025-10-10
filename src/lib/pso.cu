@@ -20,14 +20,14 @@
  *============================================================================*/
 
 /** @brief PSO algorithm parameters in device constant memory */
-__constant__ float w_d, c1_d, c2_d;
+__constant__ real w_d, c1_d, c2_d;
 
 /** @brief Physical constraint bounds in device constant memory */
-__constant__ float max_torque_d, min_torque_d;
-__constant__ float max_dt_d, min_dt_d;
+__constant__ real max_torque_d, min_torque_d;
+__constant__ real max_dt_d, min_dt_d;
 
 /** @brief PSO velocity limits in device constant memory */
-__constant__ float max_v_torque_d, max_v_dt_d;
+__constant__ real max_v_torque_d, max_v_dt_d;
 
 /** @brief Problem dimensions in device constant memory */
 __constant__ int particle_cnt_d, dimensions_d;
@@ -39,42 +39,42 @@ __constant__ attitude_params att_params_d;
  * MATHEMATICAL UTILITY FUNCTIONS (CUDA KERNELS)
  *============================================================================*/
 
-__host__ __device__ void skew_matrix_4(float *w, float *S) {
-    S[0] = 0;     S[1] = -w[0]; S[2] = -w[1]; S[3] = -w[2];
-    S[4] = w[0];  S[5] = 0;     S[6] = w[2];  S[7] = -w[1];
-    S[8] = w[1];  S[9] = -w[2]; S[10] = 0;    S[11] = w[0];
-    S[12] = w[2]; S[13] = w[1]; S[14] = -w[0]; S[15] = 0;
+__host__ __device__ void skew_matrix_4(real *w, real *S) {
+    S[0] = REAL(0.0);     S[1] = -w[0]; S[2] = -w[1]; S[3] = -w[2];
+    S[4] = w[0];  S[5] = REAL(0.0);     S[6] = w[2];  S[7] = -w[1];
+    S[8] = w[1];  S[9] = -w[2]; S[10] = REAL(0.0);    S[11] = w[0];
+    S[12] = w[2]; S[13] = w[1]; S[14] = -w[0]; S[15] = REAL(0.0);
 }
 
-__host__ __device__ void cross_product(float *a, float *b, float *result) {
+__host__ __device__ void cross_product(real *a, real *b, real *result) {
     result[0] = a[1]*b[2] - a[2]*b[1];
     result[1] = a[2]*b[0] - a[0]*b[2]; 
     result[2] = a[0]*b[1] - a[1]*b[0];
 }
 
-__host__ __device__ float quaternion_norm(float *q) {
+__host__ __device__ real quaternion_norm(real *q) {
     return sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
 }
 
-__host__ __device__ void attitude_dynamics(float *X, float *U, float *X_dot, attitude_params *params) {
-    float *q = X;
-    float *w = &X[n_quat];
+__host__ __device__ void attitude_dynamics(real *X, real *U, real *X_dot, attitude_params *params) {
+    real *q = X;
+    real *w = &X[n_quat];
     
     // Quaternion kinematics: q̇ = 0.5 * S(ω) * q
-    float S[16];
+    real S[16];
     skew_matrix_4(w, S);
     for(int i = 0; i < n_quat; i++) {
-        X_dot[i] = 0.5f * (S[i*4]*q[0] + S[i*4+1]*q[1] + S[i*4+2]*q[2] + S[i*4+3]*q[3]);
+        X_dot[i] = REAL(0.5) * (S[i*4]*q[0] + S[i*4+1]*q[1] + S[i*4+2]*q[2] + S[i*4+3]*q[3]);
     }
     
     // Angular dynamics: ω̇ = I⁻¹ * (τ - ω × (I*ω))
-    float Iw[n_vel] = {
+    real Iw[n_vel] = {
         params->inertia[0] * w[0], 
         params->inertia[1] * w[1], 
         params->inertia[2] * w[2]
     };
     
-    float w_cross_Iw[n_vel];
+    real w_cross_Iw[n_vel];
     cross_product(w, Iw, w_cross_Iw);
 
     for(int i = 0; i < n_vel; i++) {
@@ -82,8 +82,62 @@ __host__ __device__ void attitude_dynamics(float *X, float *U, float *X_dot, att
     }
 }
 
-__host__ __device__ void euler(float *X, float *U, float dt, float *X_next, attitude_params *params) {
-    float X_dot[n_states];
+/*==============================================================================
+ * NUMERICAL INTEGRATION SCHEMES
+ *============================================================================*/
+
+/**
+ * @brief Fourth-order Runge-Kutta integration for attitude dynamics
+ * 
+ * Provides high-accuracy numerical integration using the classical RK4 method:
+ * k₁ = f(t, y)
+ * k₂ = f(t + h/2, y + h*k₁/2)  
+ * k₃ = f(t + h/2, y + h*k₂/2)
+ * k₄ = f(t + h, y + h*k₃)
+ * y_{n+1} = y_n + h/6 * (k₁ + 2*k₂ + 2*k₃ + k₄)
+ * 
+ * Used for final trajectory generation where accuracy is critical.
+ * Automatically normalizes quaternion to maintain unit constraint.
+ * 
+ * @param X Current state vector [q,ω] (7 elements)
+ * @param U Control input vector [τx,τy,τz] (3 elements)
+ * @param dt Integration time step (seconds)
+ * @param X_next Output next state vector (7 elements)  
+ * @param params Spacecraft parameters
+ */
+__host__ __device__ void rk4(real *X, real *U, real dt, real *X_next, attitude_params *params) {
+    real k1[n_states], k2[n_states], k3[n_states], k4[n_states];
+    real X_temp[n_states];
+    
+    // k1 = f(X, U)
+    attitude_dynamics(X, U, k1, params);
+    
+    // k2 = f(X + dt/2*k1, U)
+    for(int i = 0; i < n_states; i++) X_temp[i] = X[i] + dt/REAL(2.0)*k1[i];
+    attitude_dynamics(X_temp, U, k2, params);
+
+    // k3 = f(X + dt/2*k2, U)
+    for(int i = 0; i < n_states; i++) X_temp[i] = X[i] + dt/REAL(2.0)*k2[i];
+    attitude_dynamics(X_temp, U, k3, params);
+
+    // k4 = f(X + dt*k3, U)
+    for(int i = 0; i < n_states; i++) X_temp[i] = X[i] + dt*k3[i];
+    attitude_dynamics(X_temp, U, k4, params);
+
+    // Final integration step
+    for(int i = 0; i < n_states; i++) {
+        X_next[i] = X[i] + dt/REAL(6.0)*(k1[i] + REAL(2.0)*k2[i] + REAL(2.0)*k3[i] + k4[i]);
+    }
+    
+    // Maintain quaternion unit constraint
+    real q_norm = quaternion_norm(X_next);
+    if(q_norm > REAL(1e-6)) {
+        for(int i = 0; i < n_quat; i++) X_next[i] /= q_norm;
+    }
+}
+
+__host__ __device__ void euler(real *X, real *U, real dt, real *X_next, attitude_params *params) {
+    real X_dot[n_states];
     
     attitude_dynamics(X, U, X_dot, params);
 
@@ -91,56 +145,59 @@ __host__ __device__ void euler(float *X, float *U, float dt, float *X_next, atti
         X_next[i] = X[i] + dt * X_dot[i];
     }
     
-    float q_norm = quaternion_norm(X_next);
-    if(q_norm > 1e-6f) {
+    real q_norm = quaternion_norm(X_next);
+    if(q_norm > REAL(1e-6)) {
         for(int i = 0; i < n_quat; i++) X_next[i] /= q_norm;
     }
 }
 
-__host__ __device__ float fit(float *solution_vector, int particle_id, attitude_params *params) {
-    float dt = solution_vector[PARTICLE_POS_IDX(particle_id, DT_IDX)];
-    float constraints_violation = 0.0f;
-    float X[n_states], X_next[n_states];
+__host__ __device__ real fit(real *solution_vector, int particle_id, attitude_params *params) {
+    real dt = solution_vector[PARTICLE_POS_IDX(particle_id, DT_IDX)];
+    real constraints_violation = REAL(0.0);
+    real X[n_states], X_next[n_states];
     for(int i = 0; i < n_quat; i++) X[i] = params->initial_quat[i];
     for(int i = 0; i < n_vel; i++) X[n_quat+i] = params->initial_omega[i];
 
     int switches = 0;
 
     for(int step = 0; step < N_STEPS; step++) {
-        float U[n_controls];
+        real U[n_controls];
         for(int axis = 0; axis < n_controls; axis++) {
             int torque_idx = TORQUE_IDX(step, axis);
             U[axis] = solution_vector[PARTICLE_POS_IDX(particle_id, torque_idx)];
             
             if (step > 0) {
                 int previous_idx = TORQUE_IDX(step-1, axis);
-                float previous_torque = solution_vector[PARTICLE_POS_IDX(particle_id, previous_idx)];
+                real previous_torque = solution_vector[PARTICLE_POS_IDX(particle_id, previous_idx)];
                 if (U[axis] * previous_torque < 0) {
                     switches++;
                 }
             }
         }
-        
-        euler(X, U, dt, X_next, params);
 
-        float q_norm = quaternion_norm(X_next);
-        constraints_violation -= QUAT_NORM_PENALTY * fabsf(q_norm - 1.0f);
+        INTEGRATE(X, U, dt, X_next, params);
+
+        real q_norm = quaternion_norm(X_next);
+        constraints_violation -= QUAT_NORM_PENALTY * fabs(q_norm - REAL(1.0));
 
         for(int i = 0; i < n_states; i++) X[i] = X_next[i];
     }
 
     constraints_violation -= SWITCH_PENALTY * switches;
 
-    float final_error = 0.0f;
+    real final_error = REAL(0.0);
+    real diff;
     for(int i = 0; i < n_quat; i++) {
-        final_error += pow(X[i] - params->target_quat[i], 2);
+        diff = X[i] - params->target_quat[i];
+        final_error += diff * diff;
     }
     for(int i = 0; i < n_vel; i++) {
-        final_error += pow(X[n_quat+i] - params->target_omega[i], 2);
+        diff = X[n_quat+i] - params->target_omega[i];
+        final_error += diff * diff;
     }
     final_error = sqrt(final_error);
     constraints_violation -= FINAL_STATE_PENALTY * final_error;
-    float total_time = dt * N_STEPS;
+    real total_time = dt * N_STEPS;
 
     constraints_violation -= DT_PENALTY * total_time;
     return constraints_violation;
@@ -151,15 +208,15 @@ __host__ __device__ float fit(float *solution_vector, int particle_id, attitude_
  * CUDA KERNEL IMPLEMENTATIONS
  *============================================================================*/
 
-__global__ void move(float *position_d, float *velocity_d, float *fitness_d,
-                     float *pbest_pos_d, float *pbest_fit_d, 
-                     particle_gbest *gbest_d, float *aux, float *aux_pos) {
+__global__ void move(real *position_d, real *velocity_d, real *fitness_d,
+                     real *pbest_pos_d, real *pbest_fit_d, 
+                     particle_gbest *gbest_d, real *aux, real *aux_pos) {
     
     int particle_id = blockIdx.x * blockDim.x + threadIdx.x;
     int tidx = threadIdx.x;
     
-    extern __shared__ float sharedMemory[];
-    float *privateBestQueue = (float *)sharedMemory;                    
+    extern __shared__ real sharedMemory[];
+    real *privateBestQueue = (real *)sharedMemory;                    
     int *privateBestParticleQueue = (int *)&sharedMemory[blockDim.x];   
     __shared__ unsigned int queue_num;
     
@@ -172,22 +229,30 @@ __global__ void move(float *position_d, float *velocity_d, float *fitness_d,
     curand_init((unsigned long long)clock() + particle_id * 2, 0, 0, &state1);
     curand_init((unsigned long long)clock() + particle_id * 2 + 1, 0, 0, &state2);
 
-    float w = w_d;
+    real w = w_d, c1 = c1_d, c2 = c2_d;
     if (DEC_INERTIA) {
-        w = w_d - (w_d - MIN_W) * particle_id / N_PARTICLES;
+        w = w_d - (w_d - MIN_W) * (real)particle_id / N_PARTICLES;
     }
-    
+
+    if (DEC_C1) {
+        c1 = c1_d - (c1_d - MIN_C1) * (real)particle_id / N_PARTICLES;
+    }
+
+    if (DEC_C2) {
+        c2 = c2_d - (c2_d - MIN_C2) * (real)particle_id / N_PARTICLES;
+    }
+
     for (int dim = 0; dim < dimensions_d; dim++) {
         int pos_idx = PARTICLE_POS_IDX(particle_id, dim);
         
-        float pos = position_d[pos_idx];
-        float vel = velocity_d[pos_idx];
-        float pbest_pos = pbest_pos_d[pos_idx];
-        float gbest_pos = gbest_d->position[dim];
+        real pos = position_d[pos_idx];
+        real vel = velocity_d[pos_idx];
+        real pbest_pos = pbest_pos_d[pos_idx];
+        real gbest_pos = gbest_d->position[dim];
         
         vel = w * vel +
-              c1_d * curand_uniform(&state1) * (pbest_pos - pos) +
-              c2_d * curand_uniform(&state2) * (gbest_pos - pos);
+              c1 * CURAND(state1) * (pbest_pos - pos) +
+              c2 * CURAND(state2) * (gbest_pos - pos);
         
         if (dim < TORQUE_DIMS) {
             vel = fmax(-max_v_torque_d, fmin(max_v_torque_d, vel));
@@ -203,7 +268,7 @@ __global__ void move(float *position_d, float *velocity_d, float *fitness_d,
         velocity_d[pos_idx] = vel;
     }
     
-    float new_fitness = fit(position_d, particle_id, &att_params_d);
+    real new_fitness = fit(position_d, particle_id, &att_params_d);
     fitness_d[particle_id] = new_fitness;
 
     if (new_fitness > pbest_fit_d[particle_id]) {
@@ -227,11 +292,11 @@ __global__ void move(float *position_d, float *velocity_d, float *fitness_d,
     __syncthreads();
 
     if (tidx == 0) {
-        aux[blockIdx.x] = -FLT_MAX;
+        aux[blockIdx.x] = -REAL_MAX;
         aux_pos[blockIdx.x] = -1;
         
         if (queue_num > 0) {
-            float best_fitness = privateBestQueue[0];
+            real best_fitness = privateBestQueue[0];
             int best_idx = 0;
             
             for (unsigned int i = 1; i < queue_num && i < blockDim.x; i++) {
@@ -246,14 +311,14 @@ __global__ void move(float *position_d, float *velocity_d, float *fitness_d,
     }
 }
 
-__global__ void findBest(particle_gbest *gbest, float *aux, float *aux_pos, float *position_d) {
+__global__ void findBest(particle_gbest *gbest, real *aux, real *aux_pos, real *position_d) {
     int tid = threadIdx.x;
     
-    float my_fitness = (tid < BlocksPerGrid) ? aux[tid] : -FLT_MAX;
+    real my_fitness = (tid < BlocksPerGrid) ? aux[tid] : -REAL_MAX;
     int my_particle = (tid < BlocksPerGrid) ? (int)aux_pos[tid] : -1;
     
     for (int offset = 16; offset > 0; offset /= 2) {
-        float other_fitness = __shfl_down_sync(0xffffffff, my_fitness, offset);
+        real other_fitness = __shfl_down_sync(0xffffffff, my_fitness, offset);
         int other_particle = __shfl_down_sync(0xffffffff, my_particle, offset);
         if (other_fitness > my_fitness) {
             my_fitness = other_fitness;
@@ -278,7 +343,7 @@ __global__ void findBest(particle_gbest *gbest, float *aux, float *aux_pos, floa
 PSOOptimizer::PSOOptimizer(casadi::DM& state_matrix, casadi::DM& input_matrix, casadi::DM& dt_matrix, bool verbose) 
     : configured_(false)
     , results_valid_(false)
-    , max_iterations_(MAX_ITERA)
+    , max_iterations_(ITERATIONS)
     , num_particles_(N_PARTICLES)
     , inertia_weight_(W)
     , cognitive_weight_(C1)
@@ -322,22 +387,22 @@ PSOOptimizer::PSOOptimizer(casadi::DM& state_matrix, casadi::DM& input_matrix, c
     // Initialize attitude parameters with default spacecraft values
     memset(&att_params_, 0, sizeof(attitude_params));
     
-    att_params_.inertia[0] = static_cast<float>(i_x);
-    att_params_.inertia[1] = static_cast<float>(i_y);
-    att_params_.inertia[2] = static_cast<float>(i_z);
-    att_params_.max_torque = static_cast<float>(tau_max);
-    att_params_.min_torque = -static_cast<float>(tau_max);
-    att_params_.max_dt = static_cast<float>(dt_max);
-    att_params_.min_dt = static_cast<float>(dt_min);
+    att_params_.inertia[0] = static_cast<real>(i_x);
+    att_params_.inertia[1] = static_cast<real>(i_y);
+    att_params_.inertia[2] = static_cast<real>(i_z);
+    att_params_.max_torque = static_cast<real>(tau_max);
+    att_params_.min_torque = -static_cast<real>(tau_max);
+    att_params_.max_dt = static_cast<real>(dt_max);
+    att_params_.min_dt = static_cast<real>(dt_min);
     
     // Initialize velocity limits
-    max_v_torque_ = 2.0f * att_params_.max_torque;
+    max_v_torque_ = REAL(2.0) * att_params_.max_torque;
     max_v_dt_ = att_params_.max_dt - att_params_.min_dt;
 
     // Allocate LHS samples storage
-    lhs_samples_ = new float*[num_particles_];
+    lhs_samples_ = new real*[num_particles_];
     for (int i = 0; i < num_particles_; i++) {
-        lhs_samples_[i] = new float[DIMENSIONS];
+        lhs_samples_[i] = new real[DIMENSIONS];
     }
 
     // Allocate host particle structure (once)
@@ -348,11 +413,11 @@ PSOOptimizer::PSOOptimizer(casadi::DM& state_matrix, casadi::DM& input_matrix, c
         return;
     }
     
-    particles_->position = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
-    particles_->velocity = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
-    particles_->pbest_pos = (float*)malloc(sizeof(float) * num_particles_ * DIMENSIONS);
-    particles_->fitness = (float*)malloc(sizeof(float) * num_particles_);
-    particles_->pbest_fit = (float*)malloc(sizeof(float) * num_particles_);
+    particles_->position = (real*)malloc(sizeof(real) * num_particles_ * DIMENSIONS);
+    particles_->velocity = (real*)malloc(sizeof(real) * num_particles_ * DIMENSIONS);
+    particles_->pbest_pos = (real*)malloc(sizeof(real) * num_particles_ * DIMENSIONS);
+    particles_->fitness = (real*)malloc(sizeof(real) * num_particles_);
+    particles_->pbest_fit = (real*)malloc(sizeof(real) * num_particles_);
     
     if (!particles_->position || !particles_->velocity || !particles_->pbest_pos || 
         !particles_->fitness || !particles_->pbest_fit) {
@@ -379,16 +444,16 @@ PSOOptimizer::~PSOOptimizer() {
 }
 
 bool PSOOptimizer::allocateDeviceMemory() {
-    size_t particle_data_size = sizeof(float) * num_particles_ * DIMENSIONS;
+    size_t particle_data_size = sizeof(real) * num_particles_ * DIMENSIONS;
     
     if (!handleCudaError(cudaMalloc((void**)&position_d_, particle_data_size), __FILE__, __LINE__) ||
         !handleCudaError(cudaMalloc((void**)&velocity_d_, particle_data_size), __FILE__, __LINE__) ||
         !handleCudaError(cudaMalloc((void**)&pbest_pos_d_, particle_data_size), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMalloc((void**)&fitness_d_, sizeof(float) * num_particles_), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMalloc((void**)&pbest_fit_d_, sizeof(float) * num_particles_), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMalloc((void**)&fitness_d_, sizeof(real) * num_particles_), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMalloc((void**)&pbest_fit_d_, sizeof(real) * num_particles_), __FILE__, __LINE__) ||
         !handleCudaError(cudaMalloc((void**)&gbest_d_, sizeof(particle_gbest)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMalloc((void**)&aux_, sizeof(float) * BlocksPerGrid), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMalloc((void**)&aux_pos_, sizeof(float) * BlocksPerGrid), __FILE__, __LINE__)) {
+        !handleCudaError(cudaMalloc((void**)&aux_, sizeof(real) * BlocksPerGrid), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMalloc((void**)&aux_pos_, sizeof(real) * BlocksPerGrid), __FILE__, __LINE__)) {
         return false;
     }
     
@@ -401,9 +466,9 @@ void PSOOptimizer::setPSOParameters(int max_iterations,
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
 
     max_iterations_ = max_iterations;
-    inertia_weight_ = static_cast<float>(inertia_weight);
-    cognitive_weight_ = static_cast<float>(cognitive_weight);
-    social_weight_ = static_cast<float>(social_weight);
+    inertia_weight_ = static_cast<real>(inertia_weight);
+    cognitive_weight_ = static_cast<real>(cognitive_weight);
+    social_weight_ = static_cast<real>(social_weight);
 
     copyImmutableConstants();
 
@@ -420,23 +485,23 @@ void PSOOptimizer::setPSOParameters(int max_iterations,
 
 bool PSOOptimizer::copyImmutableConstants() {
     // Copy PSO parameters
-    if (!handleCudaError(cudaMemcpyToSymbol(w_d, &inertia_weight_, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(c1_d, &cognitive_weight_, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(c2_d, &social_weight_, sizeof(float)), __FILE__, __LINE__)) {
+    if (!handleCudaError(cudaMemcpyToSymbol(w_d, &inertia_weight_, sizeof(real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(c1_d, &cognitive_weight_, sizeof(real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(c2_d, &social_weight_, sizeof(real)), __FILE__, __LINE__)) {
         return false;
     }
     
     // Copy physical constraints (immutable)
-    if (!handleCudaError(cudaMemcpyToSymbol(max_torque_d, &att_params_.max_torque, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(min_torque_d, &att_params_.min_torque, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(max_dt_d, &att_params_.max_dt, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(min_dt_d, &att_params_.min_dt, sizeof(float)), __FILE__, __LINE__)) {
+    if (!handleCudaError(cudaMemcpyToSymbol(max_torque_d, &att_params_.max_torque, sizeof(real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(min_torque_d, &att_params_.min_torque, sizeof(real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(max_dt_d, &att_params_.max_dt, sizeof(real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(min_dt_d, &att_params_.min_dt, sizeof(real)), __FILE__, __LINE__)) {
         return false;
     }
     
     // Copy velocity limits
-    if (!handleCudaError(cudaMemcpyToSymbol(max_v_torque_d, &max_v_torque_, sizeof(float)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(max_v_dt_d, &max_v_dt_, sizeof(float)), __FILE__, __LINE__)) {
+    if (!handleCudaError(cudaMemcpyToSymbol(max_v_torque_d, &max_v_torque_, sizeof(real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(max_v_dt_d, &max_v_dt_, sizeof(real)), __FILE__, __LINE__)) {
         return false;
     }
     
@@ -462,12 +527,12 @@ void PSOOptimizer::setStates(const double* initial_state, const double* target_s
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
     // Update initial and target states
     for (int i = 0; i < n_quat; i++) {
-        att_params_.initial_quat[i] = static_cast<float>(initial_state[i]);
-        att_params_.target_quat[i] = static_cast<float>(target_state[i]);
+        att_params_.initial_quat[i] = static_cast<real>(initial_state[i]);
+        att_params_.target_quat[i] = static_cast<real>(target_state[i]);
     }
     for (int i = 0; i < n_vel; i++) {
-        att_params_.initial_omega[i] = static_cast<float>(initial_state[i + n_quat]);
-        att_params_.target_omega[i] = static_cast<float>(target_state[i + n_quat]);
+        att_params_.initial_omega[i] = static_cast<real>(initial_state[i + n_quat]);
+        att_params_.target_omega[i] = static_cast<real>(target_state[i + n_quat]);
     }
     
     // Copy updated parameters to device constant memory
@@ -494,7 +559,7 @@ bool PSOOptimizer::initializeParticles(bool regenerate_lhs) {
     }
     
     // Initialize global best
-    gbest_.fitness = -FLT_MAX;
+    gbest_.fitness = -REAL_MAX;
     
     // Initialize each particle using LHS samples
     int best_particle = 0;
@@ -502,19 +567,19 @@ bool PSOOptimizer::initializeParticles(bool regenerate_lhs) {
         // Initialize torque variables
         for (int dim = 0; dim < TORQUE_DIMS; dim++) {
             int idx = PARTICLE_POS_IDX(i, dim);
-            float torque_range = att_params_.max_torque - att_params_.min_torque;
+            real torque_range = att_params_.max_torque - att_params_.min_torque;
             
             particles_->position[idx] = lhs_samples_[i][dim] * torque_range + att_params_.min_torque;
-            particles_->velocity[idx] = (lhs_samples_[i][dim] - 0.5f) * 2.0f * max_v_torque_;
+            particles_->velocity[idx] = (lhs_samples_[i][dim] - REAL(0.5)) * REAL(2.0) * max_v_torque_;
             particles_->pbest_pos[idx] = particles_->position[idx];
         }
         
         // Initialize time step variable
         int dt_idx = PARTICLE_POS_IDX(i, DT_IDX);
-        float dt_range = att_params_.max_dt - att_params_.min_dt;
+        real dt_range = att_params_.max_dt - att_params_.min_dt;
         
         particles_->position[dt_idx] = lhs_samples_[i][DT_IDX] * dt_range + att_params_.min_dt;
-        particles_->velocity[dt_idx] = (lhs_samples_[i][DT_IDX] - 0.5f) * 2.0f * max_v_dt_;
+        particles_->velocity[dt_idx] = (lhs_samples_[i][DT_IDX] - REAL(0.5)) * REAL(2.0) * max_v_dt_;
         particles_->pbest_pos[dt_idx] = particles_->position[dt_idx];
         
         // Evaluate initial fitness
@@ -541,16 +606,16 @@ bool PSOOptimizer::initializeParticles(bool regenerate_lhs) {
  * Generate Latin Hypercube Samples for particle initialization
  * @param samples Output matrix [num_particles_][DIMENSIONS]
  */
-void PSOOptimizer::generateLHSSamples(float** samples) {
+void PSOOptimizer::generateLHSSamples(real** samples) {
     // Generate LHS samples in [0,1] for each dimension
     for (int dim = 0; dim < DIMENSIONS; dim++) {
-        std::vector<float> intervals(num_particles_);
+        std::vector<real> intervals(num_particles_);
         
         // Create stratified intervals
         for (int i = 0; i < num_particles_; i++) {
-            float interval_start = static_cast<float>(i) / num_particles_;
-            float interval_width = 1.0f / num_particles_;
-            intervals[i] = interval_start + (rand() / static_cast<float>(RAND_MAX)) * interval_width;
+            real interval_start = static_cast<real>(i) / num_particles_;
+            real interval_width = REAL(1.0) / num_particles_;
+            intervals[i] = interval_start + RND() * interval_width;
         }
         
         // Shuffle to break correlations
@@ -577,12 +642,12 @@ bool PSOOptimizer::optimize(bool regenerate_lhs) {
     }
     
     // Copy initial data to device
-    size_t particle_data_size = sizeof(float) * num_particles_ * DIMENSIONS;
+    size_t particle_data_size = sizeof(real) * num_particles_ * DIMENSIONS;
     if (!handleCudaError(cudaMemcpy(position_d_, particles_->position, particle_data_size, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpy(velocity_d_, particles_->velocity, particle_data_size, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpy(pbest_pos_d_, particles_->pbest_pos, particle_data_size, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpy(fitness_d_, particles_->fitness, sizeof(float) * num_particles_, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpy(pbest_fit_d_, particles_->pbest_fit, sizeof(float) * num_particles_, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpy(fitness_d_, particles_->fitness, sizeof(real) * num_particles_, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpy(pbest_fit_d_, particles_->pbest_fit, sizeof(real) * num_particles_, cudaMemcpyHostToDevice), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpy(gbest_d_, &gbest_, sizeof(particle_gbest), cudaMemcpyHostToDevice), __FILE__, __LINE__)) {
         return false;
     }
@@ -594,7 +659,7 @@ bool PSOOptimizer::optimize(bool regenerate_lhs) {
     }
     
     // Main optimization loop
-    int shared_mem_size = sizeof(float) * ThreadsPerBlock + sizeof(int) * ThreadsPerBlock;
+    int shared_mem_size = sizeof(real) * ThreadsPerBlock + sizeof(int) * ThreadsPerBlock;
 
     handleCudaError(cudaEventRecord(stop_event_), __FILE__, __LINE__);
     float temp_time;
@@ -661,7 +726,7 @@ bool PSOOptimizer::extractResults() {
     double dt_double = static_cast<double>(dt_opt_);
 
     // Simulate trajectory 
-    float current_state[n_states], next_state[n_states];
+    real current_state[n_states], next_state[n_states];
     
     // Initialize with initial conditions
     for (int i = 0; i < n_quat; i++) {
@@ -674,14 +739,14 @@ bool PSOOptimizer::extractResults() {
     }
 
     for (int step = 0; step < N_STEPS; step++) {
-        float controls[n_controls];
+        real controls[n_controls];
         for (int axis = 0; axis < n_controls; axis++) {
             controls[axis] = gbest_.position[TORQUE_IDX(step, axis)];
             U(axis, step) = static_cast<double>(controls[axis]);
         }
-        
-        euler(current_state, controls, dt_opt_, next_state, &att_params_);
-        
+
+        INTEGRATE(current_state, controls, dt_opt_, next_state, &att_params_);
+
         // Store next state
         for (int i = 0; i < n_states; i++) {
             current_state[i] = next_state[i];
@@ -691,15 +756,18 @@ bool PSOOptimizer::extractResults() {
         dt(step) = dt_double;
     }
 
-    float final_error = 0.0f;
+    real final_error = REAL(0.0);
+    real diff;
     for(int i = 0; i < n_quat; i++) {
-        final_error += pow(current_state[i] - att_params_.target_quat[i], 2);
+        diff = current_state[i] - att_params_.target_quat[i];
+        final_error += diff * diff;
     }
     for(int i = 0; i < n_vel; i++) {
-        final_error += pow(current_state[n_quat+i] - att_params_.target_omega[i], 2);
+        diff = current_state[n_quat+i] - att_params_.target_omega[i];
+        final_error += diff * diff;
     }
     final_error = sqrt(final_error);
-    if (final_error > 1e-3f) {
+    if (final_error > REAL(1e-3)) {
         std::cerr << "Warning: Final state deviates significantly from target state. Final error: " 
                   << final_error << std::endl;
         return false;

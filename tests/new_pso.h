@@ -26,23 +26,17 @@
 #include <memory>
 #include <string>
 #include <tuple>
-#include <sstream>
-#include <fstream>
-#include <stdexcept>
-#include <filesystem>
-#include <iostream>
-#include <regex>
-#include <map>
-#include <cmath>
+
 
 /*==============================================================================
  * EXTERNAL LIBRARY INCLUDES  
  *============================================================================*/
 #include <curand_kernel.h>
+#include <casadi/casadi.hpp>
 /*==============================================================================
  * LOCAL INCLUDES
  *============================================================================*/
-#include "symmetric_spacecraft.h"
+#include <toac/symmetric_spacecraft.h>
 /*==============================================================================
  * PROBLEM CONFIGURATION CONSTANTS
  *============================================================================*/

@@ -39,8 +39,19 @@
  * PROBLEM CONFIGURATION CONSTANTS
  *============================================================================*/
 
+ // Replace existing DIMENSIONS definition
+#define MAX_SWITCHES_PER_AXIS 3  // Typical for spacecraft: 1-3 switches optimal
+#define N_SIGNS 3                 // Initial control direction per axis
+#define N_SWITCH_TIMES 7          // Switch times for all axes
+#define DIMENSIONS (N_SIGNS + N_SWITCH_TIMES + 1)  // signs + switches + dt
+
+// Index helpers for new parameterization
+#define SIGN_IDX(axis) (axis)  // axis = 0,1,2
+#define SWITCH_TIME_IDX(axis, switch_num) (N_SIGNS + (axis)*MAX_SWITCHES_PER_AXIS + (switch_num))
+#define DT_IDX (N_SIGNS + N_SWITCH_TIMES)
+
 /** @brief Total optimization dimensions: torque variables + time step */
-#define DIMENSIONS (n_stp * n_controls + 1)
+//#define DIMENSIONS (n_stp * n_controls + 1)
 
 /** @brief Number of discrete time steps in trajectory */
 #define N_STEPS n_stp
@@ -53,10 +64,10 @@
  *============================================================================*/
 
 /** @brief Maximum PSO iterations for optimization convergence */
-#define MAX_ITERA 200
+#define ITERATIONS 400
 
 /** @brief Total number of particles in swarm */
-#define N_PARTICLES 1280
+#define N_PARTICLES 1920
 
 /** @brief CUDA threads per block (must be multiple of 32, ≤ 1024) */
 #define ThreadsPerBlock 128
@@ -65,46 +76,103 @@
 #define BlocksPerGrid (N_PARTICLES / ThreadsPerBlock)
 
 /*==============================================================================
+ * PRECISION CONFIGURATION
+ *============================================================================*/
+
+/** 
+ * @brief Precision control: 0 = single (float), 1 = double precision
+ * WARNING: Double precision is 2-32× slower on most GPUs and uses 2× memory
+ */
+#define USE_DOUBLE_PRECISION 0
+
+#if USE_DOUBLE_PRECISION
+    typedef double real;
+    #define REAL_MAX DBL_MAX
+    
+    // Math functions
+    #define CURAND(x) curand_uniform_double(&x)
+    
+    // Constants
+    #define REAL(x) x
+#else
+    typedef float real;
+    #define REAL_MAX FLT_MAX
+    
+    // Math functions
+    #define CURAND(x) curand_uniform(&x)
+    
+    // Constants
+    #define REAL(x) x##f
+#endif
+
+/*==============================================================================
+ * INTEGRATION METHOD SELECTION
+ *============================================================================*/
+
+#define USE_RK4_INTEGRATION 1  // Use RK4 integration (0=Euler, 1=RK4)
+
+#if USE_RK4_INTEGRATION
+    #define INTEGRATE(X, U, dt, X_next, params) rk4(X, U, dt, X_next, params)
+#else
+    #define INTEGRATE(X, U, dt, X_next, params) euler(X, U, dt, X_next, params)
+#endif
+
+/*==============================================================================
  * PSO ALGORITHM PARAMETERS
  *============================================================================*/
 
 /** @brief Inertia weight - controls particle momentum */
-#define W 5.0f
+#define W REAL(2.0)
 
 /** @brief Cognitive weight - attraction to personal best */
-#define C1 2.0f
+#define C1 REAL(3.0)
 
 /** @brief Social weight - attraction to global best */
-#define C2 1.5f
-
-/** @brief Minimum inertia weight for adaptive inertia */
-#define MIN_W 0.4f
+#define C2 REAL(1.0)
 
 /** @brief Enable inertia weight decay over iterations (1=enable, 0=disable) */
 #define DEC_INERTIA 1
+
+/** @brief Minimum inertia weight for adaptive inertia */
+#define MIN_W REAL(0.1)
+
+/** @brief Enable cognitive weight decay over iterations (1=enable, 0=disable) */
+#define DEC_C1 1
+
+/** @brief Minimum cognitive weight for adaptive cognitive */
+#define MIN_C1 REAL(0.5)
+
+/** @brief Enable social weight decrease over iterations (1=enable, 0=disable) */
+#define DEC_C2 1
+
+/** @brief Minimum social weight for adaptive social */
+#define MIN_C2 REAL(0.2)
+
+/** @brief Sigmoid activation for control inputs initial sign (1=enable, 0=disable) */
+#define SIGMOID_ALPHA REAL(6.0)  // Higher = sharper sigmoid
 
 /*==============================================================================
  * CONSTRAINT PENALTY COEFFICIENTS
  *============================================================================*/
 
 /** @brief Penalty for quaternion normalization violations */
-#define QUAT_NORM_PENALTY 1000.0f
+#define QUAT_NORM_PENALTY REAL(1000.0)
 
 /** @brief Penalty for final state error from target */
-#define FINAL_STATE_PENALTY 1000.0f
+#define FINAL_STATE_PENALTY REAL(1000.0)
 
 /** @brief Penalty for excessive torque switching */
-#define SWITCH_PENALTY 0.0f
+#define SWITCH_PENALTY REAL(0.0)
 
 /** @brief Penalty coefficient for maneuver time minimization */
-#define DT_PENALTY 10.0f
+#define DT_PENALTY REAL(1.0)
 
 /*==============================================================================
  * UTILITY MACROS
  *============================================================================*/
 
-/** @brief Generate random float in [0,1] */
-#define RND() ((float)rand() / RAND_MAX)
+/** @brief Generate random real in [0,1] */
+#define RND() ((real)rand() / RAND_MAX)
 
 /** @brief CUDA error handling wrapper */
 #define HANDLE_ERROR(err) (HandleError(err, __FILE__, __LINE__))
@@ -130,7 +198,7 @@
 #define TORQUE_IDX(step, axis) ((step) * n_controls + (axis))
 
 /** @brief Dimension index for the time step variable */
-#define DT_IDX (n_controls * n_stp)
+//#define DT_IDX (n_controls * n_stp)
 
 /*==============================================================================
  * DATA STRUCTURE DEFINITIONS
@@ -140,34 +208,34 @@
  * @brief Host-side particle swarm structure using structure-of-arrays layout
  */
 typedef struct tag_particle {
-    float *position;    /**< Particle positions [particle_cnt × DIMENSIONS] */
-    float *velocity;    /**< Particle velocities [particle_cnt × DIMENSIONS] */
-    float *fitness;     /**< Current fitness values [particle_cnt] */
-    float *pbest_pos;   /**< Personal best positions [particle_cnt × DIMENSIONS] */
-    float *pbest_fit;   /**< Personal best fitness values [particle_cnt] */
+    real *position;    /**< Particle positions [particle_cnt × DIMENSIONS] */
+    real *velocity;    /**< Particle velocities [particle_cnt × DIMENSIONS] */
+    real *fitness;     /**< Current fitness values [particle_cnt] */
+    real *pbest_pos;   /**< Personal best positions [particle_cnt × DIMENSIONS] */
+    real *pbest_fit;   /**< Personal best fitness values [particle_cnt] */
 } particle;
 
 /**
  * @brief Global best particle structure for device memory
  */
 typedef struct tag_particle_gbest {
-    float position[DIMENSIONS];  /**< Global best position vector */
-    float fitness;               /**< Global best fitness value */
+    real position[DIMENSIONS];  /**< Global best position vector */
+    real fitness;               /**< Global best fitness value */
 } particle_gbest;
 
 /**
  * @brief Spacecraft attitude dynamics parameters
  */
 typedef struct tag_attitude_params {
-    float max_torque;                /**< Maximum torque magnitude [N⋅m] */
-    float min_torque;                /**< Minimum torque magnitude [N⋅m] */
-    float max_dt;                    /**< Maximum time step [seconds] */
-    float min_dt;                    /**< Minimum time step [seconds] */
-    float target_quat[n_quat];       /**< Target quaternion [w,x,y,z] */
-    float target_omega[n_vel];       /**< Target angular velocity [rad/s] */
-    float initial_quat[n_quat];      /**< Initial quaternion [w,x,y,z] */
-    float initial_omega[n_vel];      /**< Initial angular velocity [rad/s] */
-    float inertia[n_vel];            /**< Spacecraft inertia diagonal [kg⋅m²] */
+    real max_torque;                /**< Maximum torque magnitude [N⋅m] */
+    real min_torque;                /**< Minimum torque magnitude [N⋅m] */
+    real max_dt;                    /**< Maximum time step [seconds] */
+    real min_dt;                    /**< Minimum time step [seconds] */
+    real target_quat[n_quat];       /**< Target quaternion [w,x,y,z] */
+    real target_omega[n_vel];       /**< Target angular velocity [rad/s] */
+    real initial_quat[n_quat];      /**< Initial quaternion [w,x,y,z] */
+    real initial_omega[n_vel];      /**< Initial angular velocity [rad/s] */
+    real inertia[n_vel];            /**< Spacecraft inertia diagonal [kg⋅m²] */
 } attitude_params;
 
 /*==============================================================================
@@ -175,23 +243,23 @@ typedef struct tag_attitude_params {
  *============================================================================*/
 
 // Math utility functions
-__host__ __device__ void skew_matrix_4(float *w, float *S);
-__host__ __device__ void cross_product(float *a, float *b, float *result);
-__host__ __device__ float quaternion_norm(float *q);
+__host__ __device__ void skew_matrix_4(real *w, real *S);
+__host__ __device__ void cross_product(real *a, real *b, real *result);
+__host__ __device__ real quaternion_norm(real *q);
 
 // Dynamics and integration
-__host__ __device__ void attitude_dynamics(float *X, float *U, float *X_dot, attitude_params *params);
-__host__ __device__ void euler(float *X, float *U, float dt, float *X_next, attitude_params *params);
+__host__ __device__ void attitude_dynamics(real *X, real *U, real *X_dot, attitude_params *params);
+__host__ __device__ void euler(real *X, real *U, real dt, real *X_next, attitude_params *params);
 
 // Fitness function
-__host__ __device__ float fit(float *solution_vector, int particle_id, attitude_params *params);
+__host__ __device__ real fit(real *solution_vector, int particle_id, attitude_params *params);
 
 // CUDA kernels
-__global__ void move(float *position_d, float *velocity_d, float *fitness_d,
-                     float *pbest_pos_d, float *pbest_fit_d, 
-                     particle_gbest *gbest_d, float *aux, float *aux_pos);
+__global__ void move(real *position_d, real *velocity_d, real *fitness_d,
+                     real *pbest_pos_d, real *pbest_fit_d, 
+                     particle_gbest *gbest_d, real *aux, real *aux_pos);
 
-__global__ void findBest(particle_gbest *gbest, float *aux, float *aux_pos, float *position_d);
+__global__ void findBest(particle_gbest *gbest, real *aux, real *aux_pos, real *position_d);
 
 /*==============================================================================
  * PSO OPTIMIZER CLASS
@@ -250,7 +318,7 @@ public:
      * @param cognitive_weight PSO cognitive coefficient (c1)
      * @param social_weight PSO social coefficient (c2)
      */
-    void setPSOParameters(int max_iterations = MAX_ITERA, 
+    void setPSOParameters(int max_iterations = ITERATIONS, 
                          double inertia_weight = W,
                          double cognitive_weight = C1, 
                          double social_weight = C2);
@@ -310,20 +378,20 @@ private:
     attitude_params att_params_;        /**< Spacecraft and optimization parameters */
     int max_iterations_;                /**< Maximum PSO iterations */
     int num_particles_;                 /**< Number of particles in swarm */
-    float inertia_weight_;              /**< PSO inertia weight */
-    float cognitive_weight_;            /**< PSO cognitive coefficient */
-    float social_weight_;               /**< PSO social coefficient */
+    real inertia_weight_;              /**< PSO inertia weight */
+    real cognitive_weight_;            /**< PSO cognitive coefficient */
+    real social_weight_;               /**< PSO social coefficient */
     
     // PSO velocity limits
-    float max_v_torque_;                /**< Maximum velocity for torque variables */
-    float max_v_dt_;                    /**< Maximum velocity for time step variable */
+    real max_v_torque_;                /**< Maximum velocity for torque variables */
+    real max_v_dt_;                    /**< Maximum velocity for time step variable */
     
     // Optimization state
     bool configured_;                   /**< True if all parameters are set */
     bool results_valid_;                /**< True if optimization completed successfully */
 
     // Store LHS samples for reuse
-    float** lhs_samples_;
+    real** lhs_samples_;
     bool lhs_generated_;
     
     // Host memory pointers
@@ -331,10 +399,10 @@ private:
     particle_gbest gbest_;              /**< Global best particle */
     
     // Device memory pointers
-    float *position_d_, *velocity_d_, *fitness_d_;
-    float *pbest_pos_d_, *pbest_fit_d_;
+    real *position_d_, *velocity_d_, *fitness_d_;
+    real *pbest_pos_d_, *pbest_fit_d_;
     particle_gbest *gbest_d_;
-    float *aux_, *aux_pos_;
+    real *aux_, *aux_pos_;
 
     // Output references
     casadi::DM& X;             /**< Reference to output state trajectory DM */
@@ -347,8 +415,8 @@ private:
     // Performance metrics
     float exec_time_;                   /**< Pure execution time excluding setup/teardown */
     float total_time_;                  /**< Total maneuver time */
-    float final_fitness_;               /**< Final fitness value */
-    float dt_opt_;                      /**< Optimized time step */
+    real final_fitness_;               /**< Final fitness value */
+    real dt_opt_;                      /**< Optimized time step */
     float setup_time_;                  /**< Time spent in setup (seconds) */
     bool verbose_;                     /**< Enable progress output during optimization */
 
@@ -395,7 +463,7 @@ private:
      * @brief Generate Latin Hypercube Samples for particle initialization
      * @param samples Output matrix [num_particles_][DIMENSIONS]
      */
-    void generateLHSSamples(float** samples);
+    void generateLHSSamples(real** samples);
     
     /**
      * @brief Extract results from optimization and populate output DMs

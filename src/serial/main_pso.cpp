@@ -4,7 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <toac/helper_functions.h>
-#include <toac/new_pso.h>
+#include <toac/pso.h>
 #include <cstdlib>
 
 using namespace casadi;
@@ -37,7 +37,6 @@ int main(int argc, char* argv[]) {
         auto start_pso = std::chrono::high_resolution_clock::now();
         if(!initial_guess.optimize(true)) {
             std::cerr << "Error: PSO initial guess optimization failed." << std::endl;
-            return -1;
         }
         auto end = std::chrono::high_resolution_clock::now();
         auto elapsed_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_pso) / 1000.0;
