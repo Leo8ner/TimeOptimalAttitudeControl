@@ -62,7 +62,7 @@ int main() {
     Function solver = get_solver();
 
     // Open CSV file for logging results
-    std::ofstream results_file("../output/optimization_results.csv");
+    std::ofstream results_file("../output/mcs_results.csv");
     if (!results_file.is_open()) {
         std::cerr << "Error: Could not open results CSV file for writing" << std::endl;
         return 1;
@@ -186,7 +186,7 @@ int main() {
     }
 
     results_file.close();
-    std::cout << "Results logged to ../output/optimization_results.csv" << std::endl;
+    std::cout << "Results logged to output/mcs_results.csv" << std::endl;
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_elapsed = std::chrono::duration_cast<std::chrono::seconds>(total_end - total_start).count();
     int mins = total_elapsed / 60;

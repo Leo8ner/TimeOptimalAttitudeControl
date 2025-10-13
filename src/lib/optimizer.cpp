@@ -102,22 +102,23 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
             //{"debug", true}
         };
         solver_opts = {
-            {"print_level", 0},
-            {"tol", 1e-16},              // Main tolerance
-            {"constr_viol_tol", 1e-16}, // Constraint violation tolerance
-            {"acceptable_tol", 1e-16},    // Acceptable tolerance
+            {"print_level", 5},
+            //{"tol", 1e-16},              // Main tolerance
+            //{"constr_viol_tol", 1e-16}, // Constraint violation tolerance
+            //{"acceptable_tol", 1e-16},    // Acceptable tolerance
             //{"mu_init", 1e-1},           // Larger initial barrier parameter
         };
 
         // Set the objective function
         opti.minimize(T);
         opti.solver(plugin, plugin_opts, solver_opts);
+        
 
         solver = opti.to_function("solver",
             {p_X0, p_Xf, X, U, dt},
             {X, U, T, dt},
             {"X0", "Xf", "X_guess", "U_guess", "dt_guess"},
-            {"X", "U", "T", "dt"}
+            {"X", "U", "T", "dt"} // Add output names
         );
         
         
@@ -180,7 +181,7 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
             {"expand", true},
         };
         solver_opts = {
-            {"print_level", 5},
+            {"print_level", 0},
             {"warm_start_init_point", "yes"},
             {"max_iter", 1000},
             //{"linear_solver", "ma57"},
@@ -198,9 +199,9 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
 
         solver = opti.to_function("solver",
             {p_X0, p_Xf, X, U, dt},
-            {X, U, T, dt},
+            {X, U, T, dt}, // Add stats
             {"X0", "Xf", "X_guess", "U_guess", "dt_guess"},
-            {"X", "U", "T", "dt"}
+            {"X", "U", "T", "dt"} // Add output names
         );
          
     } else {

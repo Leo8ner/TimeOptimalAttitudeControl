@@ -37,11 +37,15 @@ int main(int argc, char* argv[]) {
                          {"X_guess", X_guess}, 
                          {"U_guess", U_guess}, 
                          {"dt_guess", dt_guess}};
-        DMDict result = solver(inputs);
-        
+        redirect_fatrop_to_file("../output/fatropINFO.txt");
+        DMDict result;
+        {
+        result = solver(inputs);
+        }
         // Stop the timer
         auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
+        restore_fatrop_to_console();
         std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
 
         std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;

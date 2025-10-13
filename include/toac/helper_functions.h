@@ -17,6 +17,8 @@
 #include <stdexcept>
 #include <filesystem>
 #include <iostream>
+#include <unistd.h>
+#include <fcntl.h>
 #include <casadi/casadi.hpp>
 #include <toac/symmetric_spacecraft.h>
 
@@ -115,5 +117,17 @@ std::tuple<DM, DM, DM, DM> parseInput(const std::string& initial_state, const st
  * @return Normalized angle in degrees
  */
 double normalizeAngle(double angle);
+
+/**
+ * @brief Redirect Fatrop output to a file
+ * @param filename Path to the output file
+ */
+void redirect_fatrop_to_file(const std::string& filename);
+
+/**
+ * @brief Restore Fatrop output to console
+ */
+void restore_fatrop_to_console();
+
 
 #endif /* HELPER_FUNCTIONS_H */

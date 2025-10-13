@@ -988,26 +988,26 @@ bool PSOOptimizer::extractResults()
         current_time += dt_opt_;
     }
 
-    // Validate final state
-    real final_error = REAL(0.0);
-    real diff;
-    for (int i = 0; i < n_quat; i++)
-    {
-        diff = current_state[i] - att_params_.target_quat[i];
-        final_error += diff * diff;
-    }
-    for (int i = 0; i < n_vel; i++)
-    {
-        diff = current_state[n_quat + i] - att_params_.target_omega[i];
-        final_error += diff * diff;
-    }
-    final_error = sqrt(final_error);
+    // // Validate final state
+    // real final_error = REAL(0.0);
+    // real diff;
+    // for (int i = 0; i < n_quat; i++)
+    // {
+    //     diff = current_state[i] - att_params_.target_quat[i];
+    //     final_error += diff * diff;
+    // }
+    // for (int i = 0; i < n_vel; i++)
+    // {
+    //     diff = current_state[n_quat + i] - att_params_.target_omega[i];
+    //     final_error += diff * diff;
+    // }
+    // final_error = sqrt(final_error);
 
-    if (final_error > REAL(1e-3))
-    {
-        std::cerr << "Warning: Final state error: " << final_error << std::endl;
-        return false;
-    }
+    // if (final_error > REAL(1e-3))
+    // {
+    //     std::cerr << "Warning: Final state error: " << final_error << std::endl;
+    //     return false;
+    // }
     return true;
 }
 

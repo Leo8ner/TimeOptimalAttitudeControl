@@ -394,3 +394,62 @@ std::tuple<DM, DM, DM, DM> parseInput(const std::string& initial_state, const st
     return std::make_tuple(X_0, X_f, angles_0, angles_f);
 }
 
+// Global variables to store original file descriptors
+static int original_stdout_fd = -1;
+static int original_stderr_fd = -1;
+int log_fd = -1;
+
+void redirect_fatrop_to_file(const std::string& filename) {
+
+    // Flush all streams
+    fflush(stdout);
+    fflush(stderr);
+    
+    // Create output directory if it doesn't exist
+    std::system("mkdir -p ../output");
+    
+    // Save original file descriptors BEFORE redirecting
+    original_stdout_fd = dup(STDOUT_FILENO);
+    original_stderr_fd = dup(STDERR_FILENO);
+    
+    // Open the log file
+    log_fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (log_fd == -1) {
+        std::cerr << "Warning: Could not open log file: " << filename << std::endl;
+        restore_fatrop_to_console();
+        return;
+    }
+
+    // Redirect stdout and stderr to the log file
+    if (dup2(log_fd, STDOUT_FILENO) == -1 || dup2(log_fd, STDERR_FILENO) == -1) {
+        std::cerr << "Warning: Could not redirect output to log file: " << filename << std::endl;
+        restore_fatrop_to_console();
+        return;
+    }
+    
+}
+
+void restore_fatrop_to_console() {
+
+    // Flush all streams
+    fflush(stdout);
+    fflush(stderr);
+
+    // Restore original stdout and stderr
+    if (original_stdout_fd != -1) {
+        dup2(original_stdout_fd, STDOUT_FILENO);
+        close(original_stdout_fd);
+        original_stdout_fd = -1;
+    }
+    if (original_stderr_fd != -1) {
+        dup2(original_stderr_fd, STDERR_FILENO);
+        close(original_stderr_fd);
+        original_stderr_fd = -1;
+    }
+
+    if (log_fd != -1) {
+        close(log_fd);
+        log_fd = -1;
+    }
+
+}
