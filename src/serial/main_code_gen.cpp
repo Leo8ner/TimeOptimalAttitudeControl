@@ -37,15 +37,18 @@ int main(int argc, char* argv[]) {
                          {"X_guess", X_guess}, 
                          {"U_guess", U_guess}, 
                          {"dt_guess", dt_guess}};
-        redirect_fatrop_to_file("../output/fatropINFO.txt");
-        DMDict result;
-        {
-        result = solver(inputs);
-        }
+        redirect_output_to_file("../output/fatropINFO.txt");
+        DMDict result = solver(inputs);
+        restore_output_to_console();
+
+        // Check solver status
+        int status = get_solver_status("fatrop");
+        std::cout << "Solver finished with status: " << status << std::endl;
+        std::cout << get_status_description(status) << std::endl;
+
         // Stop the timer
         auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
-        restore_fatrop_to_console();
         std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
 
         std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;

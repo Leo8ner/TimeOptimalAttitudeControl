@@ -399,7 +399,7 @@ static int original_stdout_fd = -1;
 static int original_stderr_fd = -1;
 int log_fd = -1;
 
-void redirect_fatrop_to_file(const std::string& filename) {
+void redirect_output_to_file(const std::string& filename) {
 
     // Flush all streams
     fflush(stdout);
@@ -416,20 +416,20 @@ void redirect_fatrop_to_file(const std::string& filename) {
     log_fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0644);
     if (log_fd == -1) {
         std::cerr << "Warning: Could not open log file: " << filename << std::endl;
-        restore_fatrop_to_console();
+        restore_output_to_console();
         return;
     }
 
     // Redirect stdout and stderr to the log file
     if (dup2(log_fd, STDOUT_FILENO) == -1 || dup2(log_fd, STDERR_FILENO) == -1) {
         std::cerr << "Warning: Could not redirect output to log file: " << filename << std::endl;
-        restore_fatrop_to_console();
+        restore_output_to_console();
         return;
     }
     
 }
 
-void restore_fatrop_to_console() {
+void restore_output_to_console() {
 
     // Flush all streams
     fflush(stdout);
@@ -452,4 +452,88 @@ void restore_fatrop_to_console() {
         log_fd = -1;
     }
 
+}
+
+int get_solver_status(const std::string& solver_type) {
+    std::string filename;
+    
+    // Determine which file to read based on solver type
+    if (solver_type == "fatrop") {
+        filename = "../output/fatropINFO.txt";
+    } else if (solver_type == "ipopt") {
+        filename = "../output/ipoptINFO.txt";
+    } else {
+        std::cerr << "Error: Unknown solver type: " << solver_type << std::endl;
+        return -1; // Invalid solver type
+    }
+    
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file: " << filename << std::endl;
+        return -2; // File not found
+    }
+    
+    std::string line;
+    std::string last_line;
+    
+    // Read all lines and keep the last one
+    while (std::getline(file, line)) {
+        if (!line.empty()) {
+            last_line = line;
+        }
+    }
+    file.close();
+    
+    if (last_line.empty()) {
+        std::cerr << "Error: File is empty or contains no valid lines" << std::endl;
+        return -3; // Empty file
+    }
+    
+    // Interpret the last line based on solver type
+    if (solver_type == "fatrop") {
+        // For Fatrop, look for "found solution" in the last line
+        if (last_line.find("found solution") != std::string::npos) {
+            return 0; // Success
+        } else {
+            std::cerr << "Unknown solver status in Fatrop: " << last_line << std::endl;
+            return 1; // Failed
+        }
+    } else if (solver_type == "ipopt") {
+        // For IPOPT, look for "EXIT: Optimal Solution Found" in the last line
+        if (last_line.find("EXIT: Optimal Solution Found") != std::string::npos) {
+            return 0; // Success
+        } else if (last_line.find("EXIT:") != std::string::npos) {
+            // Other EXIT messages indicate different types of failures/termination
+            if (last_line.find("Maximum Iterations Exceeded") != std::string::npos) {
+                return 2; // Max iterations
+            } else if (last_line.find("Infeasible Problem") != std::string::npos) {
+                return 3; // Infeasible
+            } else if (last_line.find("Diverging Iterates") != std::string::npos) {
+                return 4; // Diverging
+            } else {
+                std::cerr << "Unknown solver status in IPOPT: " << last_line << std::endl;
+                return 1; // Other failure
+            }
+        } else {
+            return 1; // No EXIT message found
+        }
+    }
+    
+    return -4; // Should not reach here
+}
+
+// Helper function to get status description
+std::string get_status_description(int status) {
+    switch (status) {
+        case 0: return "Success - Optimal solution found";
+        case 1: return "Failed - No solution found";
+        case 2: return "Failed - Maximum iterations exceeded";
+        case 3: return "Failed - Infeasible problem";
+        case 4: return "Failed - Diverging iterates";
+        case -1: return "Error - Invalid solver type";
+        case -2: return "Error - File not found";
+        case -3: return "Error - Empty file";
+        case -4: return "Error - Unknown error";
+        default: return "Error - Unknown status code";
+    }
 }

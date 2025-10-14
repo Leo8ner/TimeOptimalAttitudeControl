@@ -119,15 +119,30 @@ std::tuple<DM, DM, DM, DM> parseInput(const std::string& initial_state, const st
 double normalizeAngle(double angle);
 
 /**
- * @brief Redirect Fatrop output to a file
+ * @brief Redirect console output to a file
  * @param filename Path to the output file
  */
-void redirect_fatrop_to_file(const std::string& filename);
+void redirect_output_to_file(const std::string& filename);
 
 /**
- * @brief Restore Fatrop output to console
+ * @brief Restore output to console
  */
-void restore_fatrop_to_console();
+void restore_output_to_console();
+
+/**
+ * @brief Get solver status code from output file
+ * @param solver_type Type of solver ("fatrop", "ipopt", etc.)
+ * @return Integer status code
+ */
+int get_solver_status(const std::string& solver_type);
+
+/**
+ * @brief Get human-readable description of solver status code
+ * @param status Integer status code
+ * @param solver_type Type of solver ("fatrop", "ipopt", etc.)
+ * @return String description of the status
+ */
+std::string get_status_description(int status);
 
 
 #endif /* HELPER_FUNCTIONS_H */

@@ -117,45 +117,56 @@ int main() {
         
         DMDict result, result_pso;
 
-        start = std::chrono::high_resolution_clock::now();
-        try {
-            result = solver(inputs);
-        } catch (const std::exception& e) {
-            std::cerr << "Solver Exception: " << e.what() << std::endl;
-            result["T"] = -1;
+        redirect_output_to_file("../output/fatropINFO.txt");
 
+        start = std::chrono::high_resolution_clock::now();
+
+        result = solver(inputs);
+
+        end = std::chrono::high_resolution_clock::now();
+        double solver_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+
+        restore_output_to_console();
+
+        // Check solver status
+        int solver_status = get_solver_status("fatrop");
+        if (solver_status != 0) {
+            std::cerr << "Solver finished with status: " << solver_status << std::endl;
+            std::cerr << get_status_description(solver_status) << std::endl;
             if (status < 0) {
                 status = status * 10 - 3;
             } else {
                 status = -3;
             }
         }
-        end = std::chrono::high_resolution_clock::now();
-        double solver_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+
+        redirect_output_to_file("../output/fatropINFO.txt");
 
         start = std::chrono::high_resolution_clock::now();
-        try {
-            result_pso = solver(inputs_pso);
-        } catch (const std::exception& e) {
-            std::cerr << "Solver Exception: " << e.what() << std::endl;
-            result_pso["T"] = -1;
+
+        result_pso = solver(inputs_pso);
+
+        end = std::chrono::high_resolution_clock::now();
+        double solver_pso_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+        double total_pso_time = pso_time + solver_pso_time;
+
+        restore_output_to_console();
+
+        // Check solver status
+        solver_status = get_solver_status("fatrop");
+        if (solver_status != 0) {
+            std::cerr << "Solver finished with status: " << solver_status << std::endl;
+            std::cerr << get_status_description(solver_status) << std::endl;
             if (status < 0) {
                 status = status * 10 - 4;
             } else {
                 status = -4;
             }
         }
-        end = std::chrono::high_resolution_clock::now();
-        double solver_pso_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
-        double total_pso_time = pso_time + solver_pso_time;
 
-        if (result["T"].scalar() < 0 || result_pso["T"].scalar() < 0) {
-            sol_comparison = 0;
-            time_comparison = 0;
-        } else {
-            sol_comparison = result["T"].scalar() - result_pso["T"].scalar();
-            time_comparison = solver_time - total_pso_time;
-        }
+
+        sol_comparison = result["T"].scalar() - result_pso["T"].scalar();
+        time_comparison = solver_time - total_pso_time;
 
 
         // Log results to CSV

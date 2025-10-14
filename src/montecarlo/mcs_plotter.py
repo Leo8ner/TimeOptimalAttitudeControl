@@ -61,8 +61,8 @@ def plot_data(data_dict, save_name):
     """
     # Extract data from dictionary
     N = data_dict['total_sims']
-    failed_sim = data_dict['failed_sim']
-    repeated_pso = data_dict['repeated_pso']
+    failed_both = data_dict['failed_both']
+    failed_sol = data_dict['failed_sol']
     failed_pso = data_dict['failed_pso']
     pso_better = data_dict['pso_better']
     pso_worse = data_dict['pso_worse']
@@ -70,21 +70,21 @@ def plot_data(data_dict, save_name):
     solver_faster = data_dict['solver_faster']
     solver_slower = data_dict['solver_slower']
     
-    successful_sims = N - failed_sim
+    successful_sims = N - failed_sol - failed_pso + failed_both  # Adjust for double-counted failures
     
     # Calculate percentages
     # Group 1: Success rates (out of total simulations)
     success_percentages = [
-        (failed_sim / N) * 100,           # Failed simulations
-        (repeated_pso / N) * 100,         # Repeated PSO
+        (failed_both / N) * 100,           # Failed simulations
+        (failed_sol / N) * 100,         # Repeated PSO
         (failed_pso / N) * 100            # Failed PSO
     ]
     
     # Group 2: Solution quality (out of successful simulations)
     solution_percentages = [
-        (pso_better / successful_sims) * 100,  # PSO better
-        (pso_worse / successful_sims) * 100,   # PSO worse
-        (pso_same / successful_sims) * 100     # Equal solutions
+        (pso_better / N) * 100,  # PSO better
+        (pso_worse / N) * 100,   # PSO worse
+        (pso_same / N) * 100     # Equal solutions
     ]
     
     # Group 3: Time performance (out of successful simulations)
@@ -144,7 +144,7 @@ def plot_data(data_dict, save_name):
                     ax.text(bar.get_x() + bar.get_width()/2., height / 2,  # Position inside the bar
                             label, ha='center', va='center', fontsize=10, color='black', rotation=90)
     
-    add_percentage_labels([bars1_1, bars1_2, bars1_3], success_percentages, ['Failed Sims', 'Repeated PSO', 'Failed PSO'])
+    add_percentage_labels([bars1_1, bars1_2, bars1_3], success_percentages, ['Failed Both', 'Failed Sol', 'Failed PSO'])
     add_percentage_labels([bars2_1, bars2_2, bars2_3], solution_percentages, ['PSO Better', 'PSO Worse', 'Equal Solutions'])
     add_percentage_labels([bars3_1, bars3_2], time_percentages, ['Faster w/ PSO', 'Slower w/ PSO'])
     
@@ -169,7 +169,7 @@ def plot_data(data_dict, save_name):
     plt.tight_layout()
     
     # Save the plot
-    plt.savefig(f"../../output/{save_name}", format="eps", dpi=600, transparent=False, bbox_inches='tight')
+    plt.savefig(f"{save_name}", format="pdf", dpi=600, transparent=False, bbox_inches='tight')
     plt.show()
 
 # ============================
@@ -180,60 +180,83 @@ if __name__ == "__main__":
     # ------------------------------
     # Read and Process Data
     # ------------------------------
+    try:
+        data = import_results("../../output/mcs_results.csv")
+        save_name = "../../output/results_analysis.pdf"
+    except Exception as e:
+        try:
+            data = import_results("../output/mcs_results.csv")
+            save_name = "../output/results_analysis.pdf"
+        except Exception as e:
+            print("Error: Could not read results file.")
+            raise e
 
-    data = import_results("../../output/mcs_results.csv")
     time_spent_in_pso = np.mean(data["pso_time"])
     time_solver_Wpso = np.mean(data["solve_time"])
     time_solver_WOpso = np.mean(data["solve_time_1"])
     total_time = np.mean(data["total_time"])
     sol_comparison = np.mean(data["sol_comparison"])
     time_comparison = np.mean(data["time_comparison"])
-    failed_sim = 0
-    repeated_pso = 0
+    failed_sol = 0
+    failed_both = 0
     failed_pso = 0
     pso_better = 0
     pso_worse = 0
     pso_same = 0
     solver_faster = 0
     solver_slower = 0
-    failed_sim_indices = []
+    failed_sol_indices = []
+    failed_pso_indices = []
+    pso_failed = False
+    solver_failed = False
 
     N = len(data["pso_time"])
     for i in range(N):
-        if data["status"][i] == 1:
-            repeated_pso += 1
-        elif data["status"][i] == -1:
+        if data["status"][i] == -3:
+            failed_sol += 1
+            failed_sol_indices.append(i)
+            solver_failed = True
+        elif data["status"][i] == -4:
             failed_pso += 1
-        elif data["status"][i] != 0:
-            failed_sim += 1
-            failed_sim_indices.append(i)
-            continue
+            failed_pso_indices.append(i)
+            pso_failed = True
+        elif data["status"][i] == -34:
+            failed_sol += 1
+            failed_pso += 1
+            failed_both += 1
+            failed_sol_indices.append(i)
+            failed_pso_indices.append(i)
+            solver_failed = True
+            pso_failed = True
 
-        if round(data["sol_comparison"][i], 3) > 0:
+        if (round(data["sol_comparison"][i], 3)  > 0 and not pso_failed) or (not pso_failed and solver_failed):
             pso_better += 1
-        elif round(data["sol_comparison"][i], 3) < 0:
+        elif (round(data["sol_comparison"][i], 3) < 0 and not solver_failed) or (pso_failed and not solver_failed):
             pso_worse += 1
         else:
             pso_same += 1
         
-        if data["time_comparison"][i] > 0:
+        if data["time_comparison"][i] > 0 and not solver_failed and not pso_failed:
             solver_faster += 1
-        elif data["time_comparison"][i] < 0:
+        elif data["time_comparison"][i] < 0 and not solver_failed and not pso_failed:
             solver_slower += 1
+        
+        pso_failed = False
+        solver_failed = False
 
     print(f"Total Simulations: {N}")
-    print(f"Failed Simulations: {failed_sim} ({(failed_sim/N)*100:.2f}%)")
-    print(f"Repeated PSO Runs: {repeated_pso} ({(repeated_pso/N)*100:.2f}%)")
+    print(f"Failed Simulations: {failed_both} ({(failed_both/N)*100:.2f}%)")
+    print(f"Failed Solver Runs: {failed_sol} ({(failed_sol/N)*100:.2f}%)")
     print(f"Failed PSO Runs: {failed_pso} ({(failed_pso/N)*100:.2f}%)")
     print(f"Average Time in PSO: {time_spent_in_pso:.2f} seconds")
     print(f"Average Time in Solver with PSO: {time_solver_Wpso:.2f} seconds")
     print(f"Average Time in Solver without PSO: {time_solver_WOpso:.2f} seconds")
     print(f"Average Total Time: {total_time:.2f} seconds")
-    print(f"PSO Better Solutions: {pso_better} ({(pso_better/(N-failed_sim))*100:.2f}%)")
-    print(f"PSO Worse Solutions: {pso_worse} ({(pso_worse/(N-failed_sim))*100:.2f}%)")
-    print(f"PSO Same Solutions: {pso_same} ({(pso_same/(N-failed_sim))*100:.2f}%)")
-    print(f"Solver Faster with PSO: {solver_faster} ({(solver_faster/(N-failed_sim))*100:.2f}%)")
-    print(f"Solver Slower with PSO: {solver_slower} ({(solver_slower/(N-failed_sim))*100:.2f}%)")
+    print(f"PSO Better Solutions: {pso_better} ({(pso_better/(N))*100:.2f}%)")
+    print(f"PSO Worse Solutions: {pso_worse} ({(pso_worse/(N))*100:.2f}%)")
+    print(f"PSO Same Solutions: {pso_same} ({(pso_same/(N))*100:.2f}%)")
+    print(f"Solver Faster with PSO: {solver_faster} ({(solver_faster/(N-failed_sol-failed_pso + failed_both))*100:.2f}%)")
+    print(f"Solver Slower with PSO: {solver_slower} ({(solver_slower/(N-failed_sol-failed_pso + failed_both))*100:.2f}%)")
 
     # ------------------------------
     # Prepare Data for Summary Plot
@@ -241,8 +264,8 @@ if __name__ == "__main__":
 
     summary_data = {
         'total_sims': N,
-        'failed_sim': failed_sim,
-        'repeated_pso': repeated_pso,
+        'failed_both': failed_both,
+        'failed_sol': failed_sol,
         'failed_pso': failed_pso,
         'pso_better': pso_better,
         'pso_worse': pso_worse,
@@ -256,4 +279,4 @@ if __name__ == "__main__":
     # ------------------------------
 
     # 2. Summary Bar Graph
-    plot_data(summary_data, "results_analysis.eps")
+    plot_data(summary_data, save_name)

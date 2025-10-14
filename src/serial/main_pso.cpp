@@ -56,14 +56,6 @@ int main(int argc, char* argv[]) {
         auto start_solver = std::chrono::high_resolution_clock::now();
         DMDict result = solver(inputs);
 
-        std::cout << result["status"] << std::endl;      
-        // if (!status) {
-        //     std::cerr << "Error: Optimization solver failed to find a solution." << std::endl;
-        //     return -1;
-        // } else {
-        //     std::cout << "Optimization solver completed successfully." << std::endl;
-        // }
-
         // Stop the timer
         end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
