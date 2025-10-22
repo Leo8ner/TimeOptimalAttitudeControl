@@ -2,7 +2,7 @@
 #include <fstream>
 #include <iomanip>
 #include <toac/lhs.h>
-#include <toac/helper_functions.h>
+#include <helper_functions.h>
 #include <casadi/casadi.hpp>
 using namespace casadi;
 
@@ -27,15 +27,20 @@ int main(int argc, char** argv) {
     
     try {
         // Sample points using Latin Hypercube Sampling
-        LHS lhs(iterations, 6);
+        LHS lhs(iterations, 12);
         double max_angle = 180.0 * DEG; // rad
         double max_vel = 0.0 * DEG;   // rad/s
         
-        std::vector<double> mins = {-max_angle, -max_angle, -max_angle, -max_vel, -max_vel, -max_vel};
-        std::vector<double> maxs = { max_angle,  max_angle,  max_angle,  max_vel,  max_vel,  max_vel};
-        
-        auto initial_states = lhs.sampleBounded(mins, maxs);
-        auto final_states = lhs.sampleBounded(mins, maxs);
+        std::vector<double> mins = {
+            -max_angle, -max_angle, -max_angle, -max_vel, -max_vel, -max_vel,  // initial
+            -max_angle, -max_angle, -max_angle, -max_vel, -max_vel, -max_vel   // final
+        };
+        std::vector<double> maxs = {
+            max_angle, max_angle, max_angle, max_vel, max_vel, max_vel,  // initial
+            max_angle, max_angle, max_angle, max_vel, max_vel, max_vel   // final
+        };
+
+        auto samples = lhs.sampleBounded(mins, maxs);
         
         // Open CSV file
         std::ofstream csv_file("../output/lhs_samples.csv");
@@ -46,22 +51,29 @@ int main(int argc, char** argv) {
         
         // Write header
         csv_file << "q0_i,q1_i,q2_i,q3_i,wx_i,wy_i,wz_i,"
-                << "q0_f,q1_f,q2_f,q3_f,wx_f,wy_f,wz_f\n";
+                << "q0_f,q1_f,q2_f,q3_f,wx_f,wy_f,wz_f," 
+                << "phi_i,theta_i,psi_i,phi_f,theta_f,psi_f\n";
         
         csv_file << std::fixed << std::setprecision(12);
         
         // Write data
         for (int i = 0; i < iterations; ++i) {
+            std::vector<double> initial_state = {samples[i][0], samples[i][1], samples[i][2], 
+                                         samples[i][3], samples[i][4], samples[i][5]};
+            std::vector<double> final_state = {samples[i][6], samples[i][7], samples[i][8], 
+                                       samples[i][9], samples[i][10], samples[i][11]};
             // Convert Euler angles to quaternions
-            DM q_initial = euler2quat(initial_states[i][0], initial_states[i][1], initial_states[i][2]);
-            DM q_final = euler2quat(final_states[i][0], final_states[i][1], final_states[i][2]);
-            
-            csv_file << q_initial(0).scalar() << "," << q_initial(1).scalar() << "," 
+            DM q_initial = euler2quat(initial_state[0], initial_state[1], initial_state[2]);
+            DM q_final = euler2quat(final_state[0], final_state[1], final_state[2]);
+
+            csv_file << q_initial(0).scalar() << "," << q_initial(1).scalar() << ","
                     << q_initial(2).scalar() << "," << q_initial(3).scalar() << ","
-                    << initial_states[i][3] << "," << initial_states[i][4] << "," << initial_states[i][5] << ","
+                    << initial_state[3] << "," << initial_state[4] << "," << initial_state[5] << ","
                     << q_final(0).scalar() << "," << q_final(1).scalar() << "," 
                     << q_final(2).scalar() << "," << q_final(3).scalar() << ","
-                    << final_states[i][3] << "," << final_states[i][4] << "," << final_states[i][5] << "\n";
+                    << final_state[3] << "," << final_state[4] << "," << final_state[5] << ","
+                    << initial_state[0]*RAD << "," << initial_state[1]*RAD << "," << initial_state[2]*RAD << ","
+                    << final_state[0]*RAD << "," << final_state[1]*RAD << "," << final_state[2]*RAD << "\n";
         }
         
         csv_file.close();

@@ -2,7 +2,7 @@
 #define DYNAMICS_H
 
 #include <toac/symmetric_spacecraft.h>
-#include <toac/helper_functions.h>
+#include <helper_functions.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -14,7 +14,7 @@ using namespace casadi;
 struct Dynamics {
     
     Function F;
-    std::string method, plugin; 
+    std::string plugin, method; 
 
     Dynamics(const std::string& plugin_ = "ipopt", const std::string& method_ = "shooting");
 };

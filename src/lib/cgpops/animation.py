@@ -10,7 +10,7 @@ import os
 
 
 class SpacecraftAnimator:
-    def __init__(self, matlab_file='cgpopsIPOPTSolutionBC.m', Ix=1.0, Iy=1.0, Iz=1.0, collocation_points=4):
+    def __init__(self, matlab_file_sufix='BC', Ix=1.0, Iy=1.0, Iz=1.0, use_realtime=True):
         # Initialize data containers
         self.euler_angles = [[], [], []]  # φ, θ, ψ
         self.quaternions = [[], [], [], []]  # w, x, y, z
@@ -18,6 +18,7 @@ class SpacecraftAnimator:
         self.control_inputs = [[], [], []]  # ux, uy, uz
         self.time_data = []
         self.total_time = 0
+        self.use_realtime = use_realtime
         
         # Spacecraft properties
         self.Ix = Ix
@@ -34,9 +35,12 @@ class SpacecraftAnimator:
         self.manual_control = False
 
         # Load data
+        matlab_file = f'../output/cgpopsIPOPTSolution{matlab_file_sufix}.m'
         self.load_data(matlab_file)
-        # Downsample for real-time playback
-        self.downsample_data(collocation_points)
+        
+        # Calculate frame intervals from time data
+        self.calculate_frame_intervals()
+        
         # Create figure and setup
         self.setup_plot()
 
@@ -44,7 +48,7 @@ class SpacecraftAnimator:
         """Load trajectory data from MATLAB file"""
         try:
             self.parse_matlab_file(matlab_file)
-            # print(f"✓ Loaded trajectory data: {len(self.time_data)} points")
+            print(f"✓ Loaded trajectory data: {len(self.time_data)} points")
         except FileNotFoundError:
             print(f"⚠ MATLAB file '{matlab_file}' not found.")
             raise
@@ -66,7 +70,7 @@ class SpacecraftAnimator:
         tf_match = re.search(rf'system{suffix}\.phase\(1\)\.tf\s*=\s*([\d.e+-]+);', content)
         self.total_time = float(tf_match.group(1)) if tf_match else 0.0
         
-        # Extract states x(1-7) with 201 points each
+        # Extract states x(1-7) with points
         states = []
         for i in range(1, 8):
             pattern = rf'system{suffix}\.phase\(1\)\.x\({i}\)\.point\((\d+)\)\s*=\s*([-\d.e+-]+);'
@@ -74,7 +78,7 @@ class SpacecraftAnimator:
             values = [float(val) for idx, val in sorted(matches, key=lambda x: int(x[0]))]
             states.append(values)
         
-        # Extract controls u(1-3) with 201 points each
+        # Extract controls u(1-3) with points
         controls = []
         for i in range(1, 4):
             pattern = rf'system{suffix}\.phase\(1\)\.u\({i}\)\.point\((\d+)\)\s*=\s*([-\d.e+-]+);'
@@ -82,7 +86,7 @@ class SpacecraftAnimator:
             values = [float(val) for idx, val in sorted(matches, key=lambda x: int(x[0]))]
             controls.append(values)
         
-        # Extract time points
+        # Extract time points - THIS IS THE KEY PART
         pattern = rf'system{suffix}\.phase\(1\)\.t\.point\((\d+)\)\s*=\s*([-\d.e+-]+);'
         matches = re.findall(pattern, content)
         self.time_data = [float(val) for idx, val in sorted(matches, key=lambda x: int(x[0]))]
@@ -119,25 +123,32 @@ class SpacecraftAnimator:
         self.control_inputs[1] = controls[1]  # uy
         self.control_inputs[2] = controls[2]  # uz
 
-    def downsample_data(self, step=4):
-        """Downsample data by taking every nth point"""
-        indices = list(range(0, len(self.time_data), step))
+    def calculate_frame_intervals(self):
+        """Calculate time intervals between frames for real-time playback"""
+        if len(self.time_data) < 2:
+            self.frame_intervals = [100]  # Default 100ms
+            return
         
-        # Downsample all data arrays
-        self.euler_angles = [[angles[i] for i in indices] for angles in self.euler_angles]
-        self.quaternions = [[quat[i] for i in indices] for quat in self.quaternions]
-        self.angular_rates = [[rate[i] for i in indices] for rate in self.angular_rates]
-        self.control_inputs = [[control[i] for i in indices] for control in self.control_inputs]
+        # Calculate dt between consecutive frames
+        self.frame_intervals = []
+        for i in range(len(self.time_data) - 1):
+            dt = (self.time_data[i+1] - self.time_data[i]) * 1000  # Convert to ms
+            self.frame_intervals.append(max(dt, 1))  # Minimum 1ms
         
-        # Calculate dt before downsampling time
-        self.dt = self.time_data[step] if len(self.time_data) > step else self.time_data[-1]
+        # Add last interval (same as previous)
+        self.frame_intervals.append(self.frame_intervals[-1] if self.frame_intervals else 100)
         
-        # Downsample time
-        self.time_data = [self.time_data[i] for i in indices]
+        avg_interval = np.mean(self.frame_intervals)
+        min_interval = np.min(self.frame_intervals)
+        max_interval = np.max(self.frame_intervals)
         
-        # print(f"✓ Downsampled from 201 to {len(self.time_data)} frames")
-        # print(f"✓ Frame dt = {self.dt:.4f}s for real-time playback")
-     
+        print(f"✓ Frame intervals calculated:")
+        print(f"  - Average: {avg_interval:.2f}ms")
+        print(f"  - Min: {min_interval:.2f}ms")
+        print(f"  - Max: {max_interval:.2f}ms")
+        print(f"  - Total frames: {len(self.time_data)}")
+        print(f"  - Total real time: {sum(self.frame_intervals)/1000:.2f}s")
+
     def create_spacecraft_geometry(self):
         """Create spacecraft geometry based on inertia moments"""
         # Scale factors based on inertia ratios
@@ -247,8 +258,6 @@ class SpacecraftAnimator:
         
         self.setup_pause_button()
         self.setup_frame_slider()
-
-        # plt.tight_layout()
     
     def setup_data_plots(self):
         """Setup the data visualization plots"""
@@ -300,7 +309,6 @@ class SpacecraftAnimator:
     
     def setup_pause_button(self):
         """Setup pause/resume button"""
-        # Create button axes (position: left, bottom, width, height)
         button_ax = plt.axes([0.1, 0.4, 0.1, 0.04])
         self.pause_button = Button(button_ax, 'Pause')
         self.pause_button.on_clicked(self.toggle_pause)
@@ -318,7 +326,6 @@ class SpacecraftAnimator:
 
     def setup_frame_slider(self):
         """Setup frame control slider"""
-        # Create slider axes (position: left, bottom, width, height)
         slider_ax = plt.axes([0.05, 0.35, 0.2, 0.03])
         self.frame_slider = Slider(
             slider_ax, 'Step', 0, len(self.time_data)-1, 
@@ -464,36 +471,45 @@ Ix: {self.Ix:.3f}  Iy: {self.Iy:.3f}  Iz: {self.Iz:.3f}"""
     
     def animate_frame(self, frame):
         """Animation frame update function"""
-        if not self.manual_control:  # Only update if not manually controlled
+        if not self.manual_control:
             self.current_step = frame
-            self.frame_slider.set_val(frame)  # Update slider position
+            self.frame_slider.set_val(frame)
             self.update_spacecraft(frame)
             self.update_data_markers(frame)
             self.update_info_text(frame)
-        self.manual_control = False  # Reset manual control flag
+            
+            # Set the interval for the NEXT frame
+            if self.use_realtime and frame < len(self.frame_intervals) - 1:
+                next_interval = self.frame_intervals[frame]
+                self.animation.event_source.interval = next_interval
+            
+        self.manual_control = False
         return []
-    
-    def start_animation(self, realtime=True, repeat=True):
-        """Start the animation"""
+
+    def start_animation(self, repeat=True):
+        """Start the animation with real-time intervals"""
         n_frames = len(self.time_data)
         
-        # Use dt for real-time interval if available
-        if realtime and hasattr(self, 'dt'):
-            interval = self.dt * 1000  # Convert to milliseconds
-            print(f"Animation running at {interval:.1f}ms per frame (real-time)")
+        # Use first interval as starting interval
+        if self.use_realtime and hasattr(self, 'frame_intervals'):
+            initial_interval = self.frame_intervals[0]
+            print(f"✓ Animation starting with real-time intervals")
+            print(f"  First interval: {initial_interval:.2f}ms")
+            print(f"  Expected total duration: {sum(self.frame_intervals)/1000:.2f}s")
         else:
-            interval = 100  # Default interval
+            initial_interval = 100
+            print(f"✓ Animation starting with constant {initial_interval}ms interval")
         
         self.animation = FuncAnimation(
             self.fig, self.animate_frame, frames=n_frames,
-            interval=interval, blit=False, repeat=repeat
+            interval=initial_interval, blit=False, repeat=repeat
         )
         return self.animation
     
     def save_animation(self, filename='spacecraft_animation.gif', fps=10):
         """Save animation as GIF"""
         if self.animation is None:
-            self.start_animation(interval=100, repeat=False)
+            self.start_animation(repeat=False)
         
         print(f"Saving animation to {filename}...")
         self.animation.save(filename, writer='pillow', fps=fps)
@@ -504,11 +520,11 @@ Ix: {self.Ix:.3f}  Iy: {self.Iy:.3f}  Iz: {self.Iz:.3f}"""
         self.start_animation()
         plt.show()
 
-def main(csv_file, Ix, Iy, Iz):
+def main(csv_file='BC', Ix=1.0, Iy=1.0, Iz=1.0, use_realtime=True):
     """Main function to run the spacecraft animator"""
     
     # Create animator instance
-    animator = SpacecraftAnimator(csv_file, Ix, Iy, Iz)
+    animator = SpacecraftAnimator(csv_file, Ix, Iy, Iz, use_realtime)
     
     # Show animation
     animator.show()
@@ -518,11 +534,11 @@ if __name__ == "__main__":
         main(sys.argv[1], float(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4]))
     elif len(sys.argv) == 2:
         print("⚠ Missing inertia moment arguments.")
-        print("Usage: python animation.py trajectory.csv Ix Iy Iz")
+        print("Usage: python animation.py derivative_supplier Ix Iy Iz")
         print("Using default values: Ix=1.0, Iy=1.0, Iz=1.0")
-        main(sys.argv[1], 1.0, 1.0, 1.0)
+        main(sys.argv[1])
     else:
         print("⚠ Missing arguments.")
-        print("Usage: python animation.py trajectory.csv Ix Iy Iz")
-        print("Using default values: Ix=1.0, Iy=1.0, Iz=1.0")
-        main("cgpopsIPOPTSolutionBC.m", 1.0, 1.0, 1.0)
+        print("Usage: python animation.py derivative_supplier Ix Iy Iz")
+        print("Using default values: derivative_supplier=BC, Ix=1.0, Iy=1.0, Iz=1.0")
+        main()

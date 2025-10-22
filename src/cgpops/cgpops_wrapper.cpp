@@ -9,7 +9,7 @@
 #include <cgpops/cgpops_main.hpp>
 #include <string>
 #include <vector>
-#include <cgpops/helper_functions.h>
+#include <helper_functions.h>
 
 
 int main(int argc, char* argv[])
@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
     }
 
     // Parse command line arguments
-    std::vector<std::vector<double>> input = parseStateVector(argv[1], argv[2]);
+    std::vector<std::vector<double>> input = VparseStateVector(argv[1], argv[2]);
     std::vector<double> initial_state = input[0];
     std::vector<double> final_state = input[1];
 
@@ -86,9 +86,13 @@ int main(int argc, char* argv[])
 
     }
     
-    //printf4MSCRIPT("cgpopsResultsMatMat",cgpopsResultsMatMat);
+    // printf(cgpopsResults);
 
-    std::string command = "python3 ../src/lib/cgpops/animation.py ../output/cgpopsIPOPTSolutionBC.m "
+    double solution = getCgpopsSolution(derivativeSupplierG);
+    printf("\nSolution = %f",solution);
+    printf("\n\n");
+
+    std::string command = "python3 ../src/lib/cgpops/animation.py " + fileSufix(derivativeSupplierG) + " "
         + std::to_string(i_x) + " "
         + std::to_string(i_y) + " "
         + std::to_string(i_z);

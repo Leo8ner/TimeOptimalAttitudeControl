@@ -3,7 +3,7 @@
 #include <toac/dynamics.h>
 #include <iostream>
 #include <chrono>
-#include <toac/helper_functions.h>
+#include <helper_functions.h>
 #include <cstdlib>
 #include <toac/pso.h>
 

@@ -158,34 +158,33 @@ file(GLOB CGPOPS_EXT_SOURCES
 
 # Create the library
 add_library(toac STATIC 
-            src/lib/optimizer.cpp 
-            src/lib/dynamics.cpp 
-            src/lib/cudaRK4.cu
-            src/lib/CustomCallback.cpp
-            src/lib/CUDAoptimizer.cpp
-            src/lib/external_rk4.cpp
-            #src/lib/pso.cu
-            src/lib/new_pso.cu
+            src/lib/toac/optimizer.cpp 
+            src/lib/toac/dynamics.cpp 
+            src/lib/toac/cudaRK4.cu
+            src/lib/toac/CustomCallback.cpp
+            src/lib/toac/CUDAoptimizer.cpp
+            src/lib/toac/external_rk4.cpp
+            #src/lib/toac/pso.cu
+            src/lib/toac/new_pso.cu
+            src/lib/toac/lhs.cpp
             src/lib/helper_functions.cpp
-            src/lib/lhs.cpp
 ) 
 
 add_library(toac_shared SHARED 
-            src/lib/optimizer.cpp 
-            src/lib/dynamics.cpp 
-            src/lib/cudaRK4.cu
-            src/lib/CustomCallback.cpp
-            src/lib/CUDAoptimizer.cpp
-            src/lib/external_rk4.cpp
+            src/lib/toac/optimizer.cpp 
+            src/lib/toac/dynamics.cpp 
+            src/lib/toac/cudaRK4.cu
+            src/lib/toac/CustomCallback.cpp
+            src/lib/toac/CUDAoptimizer.cpp
+            src/lib/toac/external_rk4.cpp
             src/lib/helper_functions.cpp
-
 ) 
 
 # Create cgpops library
 add_library(cgpops STATIC 
     src/lib/cgpops/cgpops_main.cpp
     src/lib/cgpops/cgpops_gov.cpp
-    src/lib/cgpops/helper_functions.cpp
+    src/lib/helper_functions.cpp
     ${CGPOPS_EXT_SOURCES}
 )
 
@@ -360,9 +359,21 @@ add_executable(GenerateSamples src/montecarlo/sample_generator.cpp)
 target_link_libraries(GenerateSamples PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(GenerateSamples PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
-add_executable(MCS src/montecarlo/mcs.cpp)
-target_link_libraries(MCS PRIVATE ${CASADI_LIBRARIES} toac cgpops)
-target_include_directories(MCS PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac ${CMAKE_SOURCE_DIR}/include/cgpops)
+add_executable(MCS_CGPOPS src/montecarlo/mcs_cgpops.cpp)
+target_link_libraries(MCS_CGPOPS PRIVATE ${CASADI_LIBRARIES} cgpops toac)
+target_include_directories(MCS_CGPOPS PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac ${CMAKE_SOURCE_DIR}/include/cgpops)
+
+add_executable(MCS_NO_PSO src/montecarlo/mcs_no_pso.cpp)
+target_link_libraries(MCS_NO_PSO PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(MCS_NO_PSO PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+
+add_executable(MCS_PSO_FULL src/montecarlo/mcs_pso_full.cpp)
+target_link_libraries(MCS_PSO_FULL PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(MCS_PSO_FULL PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+
+add_executable(MCS_PSO_STO src/montecarlo/mcs_pso_sto.cpp)
+target_link_libraries(MCS_PSO_STO PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(MCS_PSO_STO PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 # Create run_cgpops executable
 add_executable(run_cgpops src/cgpops/cgpops_wrapper.cpp)
@@ -376,6 +387,7 @@ target_include_directories(run_cgpops PRIVATE
 
 target_link_libraries(run_cgpops PRIVATE
     cgpops
+    ${CASADI_LIBRARIES}
 )
 
 target_compile_options(run_cgpops PRIVATE

@@ -3,7 +3,7 @@
 #include <toac/dynamics.h>
 #include <iostream>
 #include <chrono>
-#include <toac/helper_functions.h>
+#include <helper_functions.h>
 #include <cstdlib>
 
 using namespace casadi;
@@ -37,14 +37,7 @@ int main(int argc, char* argv[]) {
                          {"X_guess", X_guess}, 
                          {"U_guess", U_guess}, 
                          {"dt_guess", dt_guess}};
-        redirect_output_to_file("../output/fatropINFO.txt");
         DMDict result = solver(inputs);
-        restore_output_to_console();
-
-        // Check solver status
-        int status = get_solver_status("fatrop");
-        std::cout << "Solver finished with status: " << status << std::endl;
-        std::cout << get_status_description(status) << std::endl;
 
         // Stop the timer
         auto end = std::chrono::high_resolution_clock::now();

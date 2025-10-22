@@ -4,7 +4,7 @@
 #include <casadi/casadi.hpp>
 #include <toac/symmetric_spacecraft.h>
 #include <toac/cuda_dynamics.h>
-#include <toac/helper_functions.h>
+#include <helper_functions.h>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
