@@ -50,44 +50,17 @@ int main() {
 
         /*-----------------------End of CGPOPS parameter settings-----------------------*/
 
-    // Read pre-generated quaternion samples from CSV
-    std::ifstream csv_file("../output/lhs_samples.csv");
-    if (!csv_file.is_open()) {
-        std::cerr << "Error: Could not open lhs_samples.csv" << std::endl;
-        return 1;
-    }
-
+    // Load pre-generated quaternion samples from CSV
     std::vector<std::vector<double>> initial_states;
     std::vector<std::vector<double>> final_states;
-
-    std::string line;
-    std::getline(csv_file, line); // Skip header
-
-    while (std::getline(csv_file, line)) {
-        std::stringstream ss(line);
-        std::string value;
-        std::vector<double> initial(7), final(7);
-        
-        // Read initial state: q0, q1, q2, q3, wx, wy, wz
-        for (int i = 0; i < n_states; ++i) {
-            std::getline(ss, value, ',');
-            initial[i] = std::stod(value);
-        }
-        // Read final state: q0, q1, q2, q3, wx, wy, wz
-        for (int i = 0; i < n_states; ++i) {
-            std::getline(ss, value, ',');
-            final[i] = std::stod(value);
-        }
-        
-        initial_states.push_back(initial);
-        final_states.push_back(final);
+    
+    if (!loadStateSamples(initial_states, final_states, "../output/mcs/lhs_samples.csv")) {
+        return 1;
     }
-
-    csv_file.close();
     int iterations = initial_states.size();
 
     // Open CSV file for logging results
-    std::ofstream results_file("../output/mcs_cgpops.csv");
+    std::ofstream results_file("../output/mcs/cgpops.csv");
     if (!results_file.is_open()) {
         std::cerr << "Error: Could not open results CSV file for writing" << std::endl;
         return 1;
@@ -138,7 +111,7 @@ int main() {
     }
 
     results_file.close();
-    std::cout << "Results logged to output/mcs_cgpops.csv" << std::endl;
+    std::cout << "Results logged to output/mcs/cgpops.csv" << std::endl;
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_elapsed = std::chrono::duration_cast<std::chrono::seconds>(total_end - total_start).count();
     int mins = total_elapsed / 60;

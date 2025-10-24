@@ -181,11 +181,11 @@ if __name__ == "__main__":
     # Read and Process Data
     # ------------------------------
     try:
-        data = import_results("../../output/mcs_results.csv")
+        data = import_results("../../output/mcs/results.csv")
         save_name = "../../output/results_analysis.pdf"
     except Exception as e:
         try:
-            data = import_results("../output/mcs_results.csv")
+            data = import_results("../output/mcs/results.csv")
             save_name = "../output/results_analysis.pdf"
         except Exception as e:
             print("Error: Could not read results file.")

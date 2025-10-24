@@ -198,4 +198,15 @@ std::string fileSufix(const int& derivative_provider);
  */
 double rnd(double value, int precision=2);
 
+/**
+ * @brief Load initial and final state samples from CSV file
+ * @param initial_states Output vector of initial state vectors [q0,q1,q2,q3,wx,wy,wz]
+ * @param final_states Output vector of final state vectors [q0,q1,q2,q3,wx,wy,wz]
+ * @param filename Path to the CSV file containing state samples
+ * @return true if successful, false otherwise
+ */
+bool loadStateSamples(std::vector<std::vector<double>>& initial_states,
+                      std::vector<std::vector<double>>& final_states,
+                      const std::string& filename="../output/lhs_samples.csv");
+
 #endif /* HELPER_FUNCTIONS_H */

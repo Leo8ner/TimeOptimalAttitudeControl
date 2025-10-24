@@ -21,6 +21,9 @@
 
 /** @brief PSO algorithm parameters in device constant memory */
 __constant__ my_real w_d, c1_d, c2_d;
+__constant__ my_real min_w_d, min_c1_d, min_c2_d;
+__constant__ bool decay_w_d, decay_c1_d, decay_c2_d;
+__constant__ my_real alpha_d, saturation_d;
 
 /** @brief Physical constraint bounds in device constant memory */
 __constant__ my_real max_torque_d, min_torque_d;
@@ -53,7 +56,7 @@ __host__ __device__ void cross_product(my_real *a, my_real *b, my_real *result) 
 }
 
 __host__ __device__ my_real quaternion_norm(my_real *q) {
-    return sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
+    return SQRT(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
 }
 
 /*==============================================================================
@@ -163,7 +166,7 @@ __host__ __device__ my_real fit_full(my_real *solution_vector, int particle_id, 
         INTEGRATE(X, U, dt, X_next, params);
 
         my_real q_norm = quaternion_norm(X_next);
-        constraints_violation -= QUAT_NORM_PENALTY * fabs(q_norm - REAL(1.0));
+        constraints_violation -= QUAT_NORM_PENALTY * FABS(q_norm - REAL(1.0));
 
         for(int i = 0; i < n_states; i++) X[i] = X_next[i];
     }
@@ -180,7 +183,7 @@ __host__ __device__ my_real fit_full(my_real *solution_vector, int particle_id, 
         diff = X[n_quat+i] - params->target_omega[i];
         final_error += diff * diff;
     }
-    final_error = sqrt(final_error);
+    final_error = SQRT(final_error);
     constraints_violation -= FINAL_STATE_PENALTY * final_error;
     my_real total_time = dt * N_STEPS;
 
@@ -213,7 +216,7 @@ __host__ __device__ my_real fit_sto(my_real *solution_vector, int particle_id, a
         {
             times[s] = solution_vector[PARTICLE_IDX_STO(particle_id, SWITCH_TIME_IDX(axis, s))];
             // Clamp to [0,1]
-            times[s] = fmax(REAL(0.0), fmin(REAL(1.0), times[s]));
+            times[s] = FMAX(REAL(0.0), FMIN(REAL(1.0), times[s]));
         }
 
         // Bubble sort (simple, efficient for small arrays)
@@ -238,7 +241,7 @@ __host__ __device__ my_real fit_sto(my_real *solution_vector, int particle_id, a
             if (times[s] > REAL(0.01) && times[s] < REAL(0.99))
             {
                 if (num_switches[axis] == 0 ||
-                    fabs(times[s] - switch_times[axis][num_switches[axis] - 1]) > REAL(0.01))
+                    FABS(times[s] - switch_times[axis][num_switches[axis] - 1]) > REAL(0.01))
                 {
                     switch_times[axis][num_switches[axis]] = times[s];
                     num_switches[axis]++;
@@ -284,7 +287,7 @@ __host__ __device__ my_real fit_sto(my_real *solution_vector, int particle_id, a
         INTEGRATE(X, U, dt, X_next, params);
 
         my_real q_norm = quaternion_norm(X_next);
-        constraints_violation -= QUAT_NORM_PENALTY * fabs(q_norm - REAL(1.0));
+        constraints_violation -= QUAT_NORM_PENALTY * FABS(q_norm - REAL(1.0));
 
         for (int i = 0; i < n_states; i++)
             X[i] = X_next[i];
@@ -304,7 +307,7 @@ __host__ __device__ my_real fit_sto(my_real *solution_vector, int particle_id, a
         diff = X[n_quat + i] - params->target_omega[i];
         final_error += diff * diff;
     }
-    final_error = sqrt(final_error);
+    final_error = SQRT(final_error);
 
     constraints_violation -= FINAL_STATE_PENALTY * final_error;
     constraints_violation -= DT_PENALTY * total_time;
@@ -338,14 +341,14 @@ __global__ void move(my_real *position_d, my_real *velocity_d, my_real *fitness_
     curand_init((unsigned long long)clock() + particle_id * 2 + 1, 0, 0, &state2);
 
     my_real w = w_d, c1 = c1_d, c2 = c2_d;
-    if (DEC_INERTIA) {
-        w = w_d - (w_d - MIN_W) * (my_real)particle_id / N_PARTICLES;
+    if (decay_w_d) {
+        w = w_d - (w_d - min_w_d) * (my_real)particle_id / particle_cnt_d;
     }
-    if (DEC_C1) {
-        c1 = c1_d - (c1_d - MIN_C1) * (my_real)particle_id / N_PARTICLES;
+    if (decay_c1_d) {
+        c1 = c1_d - (c1_d - min_c1_d) * (my_real)particle_id / particle_cnt_d;
     }
-    if (DEC_C2) {
-        c2 = c2_d - (c2_d - MIN_C2) * (my_real)particle_id / N_PARTICLES;
+    if (decay_c2_d) {
+        c2 = c2_d - (c2_d - min_c2_d) * (my_real)particle_id / particle_cnt_d;
     }
 
     // Determine index macro based on method (use dimensions_d for runtime selection)
@@ -365,28 +368,29 @@ __global__ void move(my_real *position_d, my_real *velocity_d, my_real *fitness_
         if (dimensions_d == DIMENSIONS_FULL) {
             // FULL method
             if (dim < TORQUE_DIMS) {
-                vel = fmax(-max_v_torque_d, fmin(max_v_torque_d, vel));
+                vel = FMAX(-max_v_torque_d, FMIN(max_v_torque_d, vel));
                 pos = pos + vel;
-                pos = fmax(min_torque_d, fmin(max_torque_d, pos));
+                pos = FMAX(min_torque_d, FMIN(max_torque_d, pos));
             } else {  // dt dimension
-                vel = fmax(-max_v_dt_d, fmin(max_v_dt_d, vel));
+                vel = FMAX(-max_v_dt_d, FMIN(max_v_dt_d, vel));
                 pos = pos + vel;
-                pos = fmax(min_dt_d, fmin(max_dt_d, pos));
+                pos = FMAX(min_dt_d, FMIN(max_dt_d, pos));
             }
         } else {
             // STO method
             if (dim < N_SIGNS) {  // Sign dimensions
-                vel = fmax(REAL(-6.0), fmin(REAL(6.0), vel));
-                my_real sigmoid = REAL(1.0) / (REAL(1.0) + exp(-SIGMOID_ALPHA * vel));
+                my_real vel_clamp = -LOG(REAL(1.0)/saturation_d - REAL(1.0))/alpha_d;
+                vel = FMAX(-vel_clamp, FMIN(vel_clamp, vel));
+                my_real sigmoid = REAL(1.0) / (REAL(1.0) + EXP(-alpha_d * vel));
                 pos = (CURAND(state1) < sigmoid) ? REAL(1.0) : REAL(-1.0);
             } else if (dim < N_SIGNS + N_SWITCH_TIMES) {  // Switch time dimensions
-                vel = fmax(REAL(-1.0), fmin(REAL(1.0), vel));
+                vel = FMAX(REAL(-1.0), FMIN(REAL(1.0), vel));
                 pos = pos + vel;
-                pos = fmax(REAL(0.0), fmin(REAL(1.0), pos));
+                pos = FMAX(REAL(0.0), FMIN(REAL(1.0), pos));
             } else {  // dt dimension
-                vel = fmax(-max_v_dt_d, fmin(max_v_dt_d, vel));
+                vel = FMAX(-max_v_dt_d, FMIN(max_v_dt_d, vel));
                 pos = pos + vel;
-                pos = fmax(min_dt_d, fmin(max_dt_d, pos));
+                pos = FMAX(min_dt_d, FMIN(max_dt_d, pos));
             }
         }
         
@@ -424,7 +428,7 @@ __global__ void move(my_real *position_d, my_real *velocity_d, my_real *fitness_
     __syncthreads();
 
     if (tidx == 0) {
-        aux[blockIdx.x] = -REAL_MAX;
+        aux[blockIdx.x] = REAL_MIN;
         aux_pos[blockIdx.x] = -1;
         
         if (queue_num > 0) {
@@ -446,7 +450,7 @@ __global__ void move(my_real *position_d, my_real *velocity_d, my_real *fitness_
 __global__ void findBest(particle_gbest *gbest, my_real *aux, my_real *aux_pos, my_real *position_d) {
     int tid = threadIdx.x;
     
-    my_real my_fitness = (tid < BlocksPerGrid) ? aux[tid] : -REAL_MAX;
+    my_real my_fitness = (tid < BlocksPerGrid) ? aux[tid] : REAL_MIN;
     int my_particle = (tid < BlocksPerGrid) ? (int)aux_pos[tid] : -1;
     
     for (int offset = 16; offset > 0; offset /= 2) {
@@ -474,14 +478,21 @@ __global__ void findBest(particle_gbest *gbest, my_real *aux, my_real *aux_pos, 
  * PSO OPTIMIZER CLASS IMPLEMENTATION
  *============================================================================*/
 PSOOptimizer::PSOOptimizer(casadi::DM& state_matrix, casadi::DM& input_matrix,
-                           casadi::DM& dt_matrix, PSOMethod method, bool verbose) 
+                           casadi::DM& dt_matrix, PSOMethod method, bool verbose,
+                           int num_particles) 
     : configured_(false)
     , results_valid_(false)
     , max_iterations_(ITERATIONS)
-    , num_particles_(N_PARTICLES)
+    , num_particles_(num_particles)
     , inertia_weight_(W)
     , cognitive_weight_(C_1)
     , social_weight_(C_2)
+    , min_w_(MIN_W)
+    , min_c1_(MIN_C1)
+    , min_c2_(MIN_C2)
+    , decay_w_(DEC_INERTIA)
+    , decay_c1_(DEC_C1)
+    , decay_c2_(DEC_C2)
     , particles_(nullptr)
     , position_d_(nullptr)
     , velocity_d_(nullptr)
@@ -633,15 +644,25 @@ bool PSOOptimizer::allocateDeviceMemory() {
     return true;
 }
 
-void PSOOptimizer::setPSOParameters(int max_iterations,
-                                   double inertia_weight, double cognitive_weight, double social_weight) {
-    
+void PSOOptimizer::setPSOParameters(int max_iterations, double inertia_weight, 
+    double cognitive_weight, double social_weight, bool decay_inertia, 
+    bool decay_cognitive, bool decay_social, double min_inertia, double min_cognitive, 
+    double min_social,  double sigmoid_alpha, double sigmoid_saturation) {
+
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
 
     max_iterations_ = max_iterations;
     inertia_weight_ = static_cast<my_real>(inertia_weight);
     cognitive_weight_ = static_cast<my_real>(cognitive_weight);
     social_weight_ = static_cast<my_real>(social_weight);
+    decay_w_ = decay_inertia;   
+    decay_c1_ = decay_cognitive;
+    decay_c2_ = decay_social;
+    min_w_ = static_cast<my_real>(min_inertia);
+    min_c1_ = static_cast<my_real>(min_cognitive);
+    min_c2_ = static_cast<my_real>(min_social);
+    sigmoid_alpha_ = static_cast<my_real>(sigmoid_alpha);
+    sigmoid_saturation_ = static_cast<my_real>(sigmoid_saturation);
 
     copyImmutableConstants();
 
@@ -660,7 +681,15 @@ bool PSOOptimizer::copyImmutableConstants() {
     // Copy PSO parameters
     if (!handleCudaError(cudaMemcpyToSymbol(w_d, &inertia_weight_, sizeof(my_real)), __FILE__, __LINE__) ||
         !handleCudaError(cudaMemcpyToSymbol(c1_d, &cognitive_weight_, sizeof(my_real)), __FILE__, __LINE__) ||
-        !handleCudaError(cudaMemcpyToSymbol(c2_d, &social_weight_, sizeof(my_real)), __FILE__, __LINE__)) {
+        !handleCudaError(cudaMemcpyToSymbol(c2_d, &social_weight_, sizeof(my_real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(decay_w_d, &decay_w_, sizeof(bool)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(decay_c1_d, &decay_c1_, sizeof(bool)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(decay_c2_d, &decay_c2_, sizeof(bool)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(min_w_d, &min_w_, sizeof(my_real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(min_c1_d, &min_c1_, sizeof(my_real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(min_c2_d, &min_c2_, sizeof(my_real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(alpha_d, &sigmoid_alpha_, sizeof(my_real)), __FILE__, __LINE__) ||
+        !handleCudaError(cudaMemcpyToSymbol(saturation_d, &sigmoid_saturation_, sizeof(my_real)), __FILE__, __LINE__)) {
         return false;
     }
     
@@ -831,10 +860,6 @@ bool PSOOptimizer::initializeParticles_full(bool regenerate_lhs) {
     return true;
 }
 
-/**
- * Generate Latin Hypercube Samples for particle initialization
- * @param samples Output matrix [num_particles_][dimensions_]
- */
 void PSOOptimizer::generateLHSSamples(my_real** samples) {
     // Generate LHS samples in [0,1] for each dimension
     for (int dim = 0; dim < dimensions_; dim++) {
@@ -1079,12 +1104,11 @@ bool PSOOptimizer::extractResults_sto() {
         diff = current_state[n_quat+i] - att_params_.target_omega[i];
         final_error += diff * diff;
     }
-    final_error = sqrt(final_error);
+    final_error = SQRT(final_error);
     
-    if (final_error > REAL(1e-3)) {
+    if (final_error > REAL(1e-3) || verbose_) {
         std::cerr << "Warning: Final state deviates significantly from target state. Final error: " 
                   << final_error << std::endl;
-        return false;
     }
     
     return true;
@@ -1133,12 +1157,11 @@ bool PSOOptimizer::extractResults_full() {
         diff = current_state[n_quat+i] - att_params_.target_omega[i];
         final_error += diff * diff;
     }
-    final_error = sqrt(final_error);
+    final_error = SQRT(final_error);
     
-    if (final_error > REAL(1e-3)) {
+    if (final_error > REAL(1e-3) || verbose_) {
         std::cerr << "Warning: Final state deviates significantly from target state. Final error: " 
                   << final_error << std::endl;
-        return false;
     }
     
     return true;
@@ -1197,4 +1220,23 @@ bool PSOOptimizer::handleCudaError(cudaError_t err, const char* file, int line) 
         return false;
     }
     return true;
+}
+
+void PSOOptimizer::printResults() const
+{
+    if (!results_valid_)
+    {
+        std::cout << "No valid results available." << std::endl;
+        return;
+    }
+
+    std::cout << "\n=== PSO Optimization Results ===" << std::endl;
+    std::cout << "Final fitness: " << std::setprecision(6) << final_fitness_ << std::endl;
+    std::cout << "Total maneuver time: " << total_time_ << " seconds" << std::endl;
+    std::cout << "Time step: " << dt_opt_ << " seconds" << std::endl;
+    std::cout << "Execution time: " << exec_time_ << " seconds" << std::endl;
+    std::cout << "Setup time: " << setup_time_ << " seconds" << std::endl;
+    std::cout << "Total computation time: " << (setup_time_ + exec_time_) << " seconds" << std::endl;
+    std::cout << "===============================\n"
+              << std::endl;
 }

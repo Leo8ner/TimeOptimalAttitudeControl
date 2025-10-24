@@ -59,10 +59,10 @@
  *============================================================================*/
 
 /** @brief Maximum PSO iterations for optimization convergence */
-#define ITERATIONS 400
+#define ITERATIONS 200
 
-/** @brief Total number of particles in swarm */
-#define N_PARTICLES 1920
+/** @brief Total number of particles in swarm (should be a multiple of GPU cores (640 in my case)) */
+#define N_PARTICLES 3200
 
 /** @brief CUDA threads per block (must be multiple of 32, ≤ 1024) */
 #define ThreadsPerBlock 128
@@ -87,6 +87,12 @@
     
     // Math functions
     #define CURAND(x) curand_uniform_double(&x)
+    #define LOG(x) log(x)
+    #define EXP(x) exp(x)
+    #define FMAX(a,b) fmax(a,b)
+    #define FMIN(a,b) fmin(a,b)
+    #define SQRT(x) sqrt(x) 
+    #define FABS(x) fabs(x)  
     
     // Constants
     #define REAL(x) x
@@ -97,6 +103,12 @@
 
     // Math functions
     #define CURAND(x) curand_uniform(&x)
+    #define LOG(x) logf(x)
+    #define EXP(x) expf(x)
+    #define FMAX(a,b) fmaxf(a,b)
+    #define FMIN(a,b) fminf(a,b)
+    #define SQRT(x) sqrtf(x)
+    #define FABS(x) fabsf(x)
     
     // Constants
     #define REAL(x) x##f
@@ -145,8 +157,11 @@
 /** @brief Minimum social weight for adaptive social */
 #define MIN_C2 REAL(0.2)
 
-/** @brief Sigmoid alpha parameter for smooth control transitions */
-#define SIGMOID_ALPHA REAL(6.0)  // Higher = sharper sigmoid
+/** @brief Sigmoid alpha parameter for stochastic initial control sign transitions */
+#define SIGMOID_ALPHA REAL(1.0)  // Higher = faster saturation, less exploration
+
+/** @brief Sigmoid saturation limit for initial control sign transitions */
+#define SIGMOID_SATURATION REAL(0.99)  // Maximum level of certainty in initial control sign (0.5 to 1.0)
 
 /*==============================================================================
  * CONSTRAINT PENALTY COEFFICIENTS
@@ -308,8 +323,10 @@ public:
      * @param[out] dt_matrix Time step durations (vector or 1 x N DM depending on formulation).
      * @param method PSO optimization method (FULL or STO)
      * @param verbose Enable progress output during optimization
+     * @param num_particles Number of particles in swarm
      */
-    PSOOptimizer(casadi::DM& state_matrix, casadi::DM& input_matrix, casadi::DM& dt_matrix, PSOMethod method = PSOMethod::FULL, bool verbose = false);
+    PSOOptimizer(casadi::DM& state_matrix, casadi::DM& input_matrix, casadi::DM& dt_matrix,
+                PSOMethod method = PSOMethod::FULL, bool verbose = false, int num_particles = N_PARTICLES);
     
     /**
      * @brief Destructor - cleans up allocated memory
@@ -323,15 +340,30 @@ public:
     /**
      * @brief Set PSO algorithm parameters
      * @param max_iterations Maximum number of PSO iterations
-     * @param num_particles Number of particles in swarm
      * @param inertia_weight PSO inertia weight
      * @param cognitive_weight PSO cognitive coefficient (c1)
      * @param social_weight PSO social coefficient (c2)
+     * @param decay_inertia Enable inertia weight decay over iterations
+     * @param decay_cognitive Enable cognitive weight decay over iterations
+     * @param decay_social Enable social weight decay over iterations
+     * @param min_inertia Minimum inertia weight for adaptive inertia
+     * @param min_cognitive Minimum cognitive weight for adaptive cognitive
+     * @param min_social Minimum social weight for adaptive social
+     * @param sigmoid_alpha Sigmoid alpha parameter for stochastic initial control sign transitions
+     * @param sigmoid_saturation Sigmoid saturation limit for initial control sign transitions
      */
     void setPSOParameters(int max_iterations = ITERATIONS, 
                          double inertia_weight = W,
                          double cognitive_weight = C_1, 
-                         double social_weight = C_2);
+                         double social_weight = C_2,
+                         bool decay_inertia = DEC_INERTIA,
+                         bool decay_cognitive = DEC_C1,
+                         bool decay_social = DEC_C2,
+                         double min_inertia = MIN_W,
+                         double min_cognitive = MIN_C1,
+                         double min_social = MIN_C2,
+                         double sigmoid_alpha = SIGMOID_ALPHA,
+                         double sigmoid_saturation = SIGMOID_SATURATION);
 
     /**
      * @brief Set spacecraft initial and target states
@@ -394,6 +426,14 @@ private:
     my_real inertia_weight_;              /**< PSO inertia weight */
     my_real cognitive_weight_;            /**< PSO cognitive coefficient */
     my_real social_weight_;               /**< PSO social coefficient */
+    my_real min_w_;                    /**< Minimum inertia weight */
+    my_real min_c1_;                   /**< Minimum cognitive weight */
+    my_real min_c2_;                   /**< Minimum social weight */
+    bool decay_w_;                      /**< Enable inertia weight decay */
+    bool decay_c1_;                      /**< Enable cognitive weight decay */
+    bool decay_c2_;                      /**< Enable social weight decay */
+    my_real sigmoid_alpha_;              /**< Sigmoid alpha for stochastic control sign */
+    my_real sigmoid_saturation_;         /**< Sigmoid saturation limit for control sign */
     
     // PSO velocity limits
     my_real max_v_torque_;                /**< Maximum velocity for torque variables */

@@ -164,8 +164,8 @@ add_library(toac STATIC
             src/lib/toac/CustomCallback.cpp
             src/lib/toac/CUDAoptimizer.cpp
             src/lib/toac/external_rk4.cpp
-            #src/lib/toac/pso.cu
-            src/lib/toac/new_pso.cu
+            src/lib/toac/pso.cu
+            #src/lib/toac/new_pso.cu
             src/lib/toac/lhs.cpp
             src/lib/helper_functions.cpp
 ) 

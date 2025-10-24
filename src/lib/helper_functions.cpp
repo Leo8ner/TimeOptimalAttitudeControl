@@ -762,3 +762,72 @@ double rnd(double value, int precision) {
     double factor = std::pow(10.0, precision);
     return std::round(value * factor) / factor;
 }
+
+/**
+ * @brief Load initial and final state samples from CSV file
+ * @param initial_states Output vector of initial state vectors [q0,q1,q2,q3,wx,wy,wz]
+ * @param final_states Output vector of final state vectors [q0,q1,q2,q3,wx,wy,wz]
+ * @param filename Path to the CSV file containing state samples
+ * @return true if successful, false otherwise
+ */
+bool loadStateSamples(std::vector<std::vector<double>>& initial_states,
+                      std::vector<std::vector<double>>& final_states,
+                      const std::string& filename) {
+    
+    std::ifstream csv_file(filename);
+    if (!csv_file.is_open()) {
+        std::cerr << "Error: Could not open " << filename << std::endl;
+        return false;
+    }
+
+    std::string line;
+    std::getline(csv_file, line); // Skip header
+
+    int line_count = 0;
+    while (std::getline(csv_file, line)) {
+        line_count++;
+        std::stringstream ss(line);
+        std::string value;
+        std::vector<double> initial(n_states), final(n_states);
+        
+        try {
+            // Read initial state: q0, q1, q2, q3, wx, wy, wz
+            for (int i = 0; i < n_states; ++i) {
+                if (!std::getline(ss, value, ',')) {
+                    std::cerr << "Error: Incomplete initial state data at line " << line_count << std::endl;
+                    csv_file.close();
+                    return false;
+                }
+                initial[i] = std::stod(value);
+            }
+            
+            // Read final state: q0, q1, q2, q3, wx, wy, wz
+            for (int i = 0; i < n_states; ++i) {
+                if (!std::getline(ss, value, ',')) {
+                    std::cerr << "Error: Incomplete final state data at line " << line_count << std::endl;
+                    csv_file.close();
+                    return false;
+                }
+                final[i] = std::stod(value);
+            }
+            
+            initial_states.push_back(initial);
+            final_states.push_back(final);
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error parsing line " << line_count << ": " << e.what() << std::endl;
+            csv_file.close();
+            return false;
+        }
+    }
+
+    csv_file.close();
+    
+    if (initial_states.empty()) {
+        std::cerr << "Error: No valid samples loaded from " << filename << std::endl;
+        return false;
+    }
+    
+    std::cout << "Successfully loaded " << initial_states.size() << " samples from " << filename << std::endl;
+    return true;
+}

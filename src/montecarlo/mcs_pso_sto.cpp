@@ -14,48 +14,39 @@ using namespace casadi;
 
 int main() {
 
-    // Read pre-generated quaternion samples from CSV
-    std::ifstream csv_file("../output/lhs_samples.csv");
-    if (!csv_file.is_open()) {
-        std::cerr << "Error: Could not open lhs_samples.csv" << std::endl;
-        return 1;
-    }
-
+    // Load pre-generated quaternion samples from CSV
     std::vector<std::vector<double>> initial_states;
     std::vector<std::vector<double>> final_states;
-
-    std::string line;
-    std::getline(csv_file, line); // Skip header
-
-    while (std::getline(csv_file, line)) {
-        std::stringstream ss(line);
-        std::string value;
-        std::vector<double> initial(7), final(7);
-        
-        // Read initial state: q0, q1, q2, q3, wx, wy, wz
-        for (int i = 0; i < n_states; ++i) {
-            std::getline(ss, value, ',');
-            initial[i] = std::stod(value);
-        }
-        // Read final state: q0, q1, q2, q3, wx, wy, wz
-        for (int i = 0; i < n_states; ++i) {
-            std::getline(ss, value, ',');
-            final[i] = std::stod(value);
-        }
-        
-        initial_states.push_back(initial);
-        final_states.push_back(final);
+    
+    if (!loadStateSamples(initial_states, final_states, "../output/mcs/lhs_samples.csv")) {
+        return 1;
     }
-
-    csv_file.close();
     int iterations = initial_states.size();
 
+    // PSO parameters
+    int n_particles = 3200;       // Number of particles in swarm
+    int n_iterations = 200;       // Number of PSO iterations
+    double inertia_weight = 2.0;  // Inertia weight
+    double cognitive_coeff = 3.0; // Cognitive coefficient
+    double social_coeff = 1.0;    // Social coefficient
+    bool decay_inertia = true;    // Enable inertia weight decay
+    bool decay_cognitive = true;  // Enable cognitive coefficient decay
+    bool decay_social = true;     // Enable social coefficient decay
+    double min_inertia = 0.1;     // Minimum inertia weight
+    double min_cognitive = 0.5;   // Minimum cognitive coefficient
+    double min_social = 0.2;      // Minimum social coefficient
+    double sigmoid_alpha = 1.0;  // Sigmoid alpha for stochastic control sign
+    double sigmoid_saturation = 0.99; // Sigmoid saturation limit for control sign
+
     DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
-    PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::STO, false); // Create PSO optimizer instance
+    PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::STO, false, n_particles); // Create PSO optimizer instance
+    initial_guess.setPSOParameters(n_iterations, inertia_weight, cognitive_coeff, social_coeff,
+                                  decay_inertia, decay_cognitive, decay_social,
+                                  min_inertia, min_cognitive, min_social);  
     Function solver = get_solver();
 
     // Open CSV file for logging results
-    std::ofstream results_file("../output/mcs_pso_sto.csv");
+    std::ofstream results_file("../output/mcs/pso_sto.csv");
     if (!results_file.is_open()) {
         std::cerr << "Error: Could not open results CSV file for writing" << std::endl;
         return 1;
@@ -128,7 +119,7 @@ int main() {
     }
 
     results_file.close();
-    std::cout << "Results logged to output/mcs_pso_sto.csv" << std::endl;
+    std::cout << "Results logged to output/mcs/pso_sto.csv" << std::endl;
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_elapsed = std::chrono::duration_cast<std::chrono::seconds>(total_end - total_start).count();
     int mins = total_elapsed / 60;

@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
         DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
 
         auto prepare_pso = std::chrono::high_resolution_clock::now();
-        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, true); // Create PSO optimizer instance
+        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::STO, true); // Create PSO optimizer instance
         initial_guess.setStates(X_0->data(), X_f->data());
         // double w = 5.0; // Inertia weight
         // double c1 = 2.0; // Cognitive weight

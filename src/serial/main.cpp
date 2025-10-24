@@ -27,28 +27,28 @@ int main(int argc, char* argv[]) {
         DM X_0, X_f, angles_0, angles_f;
         std::tie(X_0, X_f, angles_0, angles_f) = parseInput(argv[1], argv[2]);
 
-        // DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
+        DM X_guess, U_guess, dt_guess; // Initial guesses for states, controls, and time steps
 
-        // extractInitialGuess("../input/initial_guess.csv", X_guess, U_guess, dt_guess);
+        extractInitialGuess("../input/initial_guess.csv", X_guess, U_guess, dt_guess);
 
-        DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
+        // DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
 
-        auto prepare_pso = std::chrono::high_resolution_clock::now();
-        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, true); // Create PSO optimizer instance
-        initial_guess.setStates(X_0->data(), X_f->data());
+        // auto prepare_pso = std::chrono::high_resolution_clock::now();
+        // PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::FULL); // Create PSO optimizer instance
+        // initial_guess.setStates(X_0->data(), X_f->data());
         // double w = 5.0; // Inertia weight
         // double c1 = 2.0; // Cognitive weight
         // double c2 = 1.0; // Social weight
 
         // initial_guess.setPSOParameters(100,w,c1,c2); // Set PSO parameters: iterations, particles, inertia, cognitive, social
-        auto start_pso = std::chrono::high_resolution_clock::now();
-        if(!initial_guess.optimize(true)) {
-            std::cerr << "Error: PSO initial guess optimization failed." << std::endl;
-            return -1;
-        }
-        auto end = std::chrono::high_resolution_clock::now();
-        auto elapsed_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_pso) / 1000.0;
-        auto total_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - prepare_pso) / 1000.0;
+        // auto start_pso = std::chrono::high_resolution_clock::now();
+        // if(!initial_guess.optimize(true)) {
+        //     std::cerr << "Error: PSO initial guess optimization failed." << std::endl;
+        //     return -1;
+        // }
+        // auto end = std::chrono::high_resolution_clock::now();
+        // auto elapsed_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_pso) / 1000.0;
+        // auto total_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - prepare_pso) / 1000.0;
 
 
         std::string plugin = "fatrop"; // Specify the solver plugin to use
@@ -77,12 +77,12 @@ int main(int argc, char* argv[]) {
             std::cout << "Optimization solver completed successfully." << std::endl;
         }  
         // Stop the timer
-        end = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
         
         std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
-        std::cout << "PSO Time: " << elapsed_pso.count() << " s" << std::endl;
-        std::cout << "Total PSO + Setup Time: " << total_pso.count() << " s" << std::endl;
+        // std::cout << "PSO Time: " << elapsed_pso.count() << " s" << std::endl;
+        // std::cout << "Total PSO + Setup Time: " << total_pso.count() << " s" << std::endl;
         std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;
 
         processResults(result, angles_0, angles_f);
