@@ -10,10 +10,10 @@ int main(int argc, char** argv) {
 
     int iterations = 1000;
     // Parse command-line argument for iteration count
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <iterations>" << std::endl;
-        std::cerr << "Example: " << argv[0] << " 1000" << std::endl;
-        std::cerr << "Defaulting to 1000 iterations." << std::endl;
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <iterations> <output_file>" << std::endl;
+        std::cerr << "Example: " << argv[0] << " 1000 lhs_samples.csv" << std::endl;
+        std::cerr << "Defaulting to 1000 iterations and saving to ../output/lhs_samples.csv." << std::endl;
     } else {
         iterations = std::atoi(argv[1]);
         if (iterations <= 0) {
@@ -43,7 +43,8 @@ int main(int argc, char** argv) {
         auto samples = lhs.sampleBounded(mins, maxs);
         
         // Open CSV file
-        std::ofstream csv_file("../output/lhs_samples.csv");
+        std::string output_file = "../output/" + std::string(argv[2] ? argv[2] : "lhs_samples.csv");
+        std::ofstream csv_file(output_file);
         if (!csv_file.is_open()) {
             std::cerr << "Error: Could not open CSV file for writing" << std::endl;
             return 1;
@@ -77,7 +78,7 @@ int main(int argc, char** argv) {
         }
         
         csv_file.close();
-        std::cout << "Successfully generated " << iterations << " LHS samples in ../output/lhs_samples.csv" << std::endl;
+        std::cout << "Successfully generated " << iterations << " LHS samples in " << output_file << std::endl;
         
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

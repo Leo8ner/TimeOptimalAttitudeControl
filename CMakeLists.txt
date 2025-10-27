@@ -375,6 +375,13 @@ add_executable(MCS_PSO_STO src/montecarlo/mcs_pso_sto.cpp)
 target_link_libraries(MCS_PSO_STO PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(MCS_PSO_STO PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
+add_executable(PSO_TUNER src/montecarlo/pso_tuner.cpp)
+target_link_libraries(PSO_TUNER PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(PSO_TUNER PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+
+add_executable(GetPSOparams src/montecarlo/pso_params.cpp)
+
+
 # Create run_cgpops executable
 add_executable(run_cgpops src/cgpops/cgpops_wrapper.cpp)
 

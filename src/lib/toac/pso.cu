@@ -1106,7 +1106,7 @@ bool PSOOptimizer::extractResults_sto() {
     }
     final_error = SQRT(final_error);
     
-    if (final_error > REAL(1e-3) || verbose_) {
+    if (final_error > REAL(1e-3) && verbose_) {
         std::cerr << "Warning: Final state deviates significantly from target state. Final error: " 
                   << final_error << std::endl;
     }
@@ -1159,7 +1159,7 @@ bool PSOOptimizer::extractResults_full() {
     }
     final_error = SQRT(final_error);
     
-    if (final_error > REAL(1e-3) || verbose_) {
+    if (final_error > REAL(1e-3) && verbose_) {
         std::cerr << "Warning: Final state deviates significantly from target state. Final error: " 
                   << final_error << std::endl;
     }

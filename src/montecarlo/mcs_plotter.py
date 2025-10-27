@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+import glob
 
 # ============================
 # Read Data
@@ -7,7 +9,7 @@ import matplotlib.pyplot as plt
 
 def import_results(filename):
     """
-    Processes the CSV file and returns a dictionary where each key is a column name
+    Processes a CSV file and returns a dictionary where each key is a column name
     and each value is a numpy array containing the column data.
     Handles duplicate column names by appending a suffix.
     """
@@ -15,7 +17,7 @@ def import_results(filename):
     
     with open(filename, "r") as file:
         # Read the header line to get column names
-        headers = file.readline().strip().split(",")
+        headers = file.readline().strip().split(", ")
         
         # Handle duplicate column names
         unique_headers = []
@@ -51,125 +53,365 @@ def import_results(filename):
     
     return data_dict
 
-def plot_data(data_dict, save_name):
+def import_all_csv_files(directory):
     """
-    Creates a bar graph with three groups: Success, Solution, and Time performance.
+    Import all CSV files from the specified directory.
     
     Parameters:
-        data_dict (dict): Dictionary containing analysis results
+        directory (str): Path to the directory containing CSV files
+        
+    Returns:
+        dict: Dictionary where keys are filenames (without extension) and 
+              values are dictionaries containing column data
+    """
+    all_data = {}
+    
+    # Get all CSV files in the directory
+    csv_files = glob.glob(os.path.join(directory, "*.csv"))
+    
+    if not csv_files:
+        print(f"Warning: No CSV files found in {directory}")
+        return all_data
+    
+    print(f"Found {len(csv_files)} CSV files in {directory}")
+    
+    for csv_file in csv_files:
+        # Get filename without extension
+        filename = os.path.splitext(os.path.basename(csv_file))[0]
+        
+        try:
+            print(f"Loading {filename}...")
+            data = import_results(csv_file)
+            all_data[filename] = data
+            print(f"  ✓ Loaded {len(data)} columns with {len(next(iter(data.values())))} rows")
+        except Exception as e:
+            print(f"  ✗ Error loading {filename}: {e}")
+    
+    return all_data
+
+def analyze_results(data):
+    """
+    Analyze the results data and compute statistics.
+    
+    Parameters:
+        data (dict): Dictionary containing column data from multiple methods
+        
+    Returns:
+        dict: Dictionary containing analysis results
+    """
+    # Check if required methods exist
+    methods = ['cgpops', 'no_pso', 'pso_full', 'pso_sto']
+    available_methods = [m for m in methods if m in data]
+    
+    if not available_methods:
+        print("Warning: No recognized method data found")
+        return None
+    N = len(data[available_methods[0]]["status"])
+    
+    results = {}
+    
+    # Extract cgpops data
+    if 'cgpops' in data:
+        cgpops = data["cgpops"]
+        cgpops["avg_time"] = np.mean(cgpops["time"])
+        avg_time_success = 0
+        n_success = 0
+        not_real_time = 0
+
+        # Loop to check fake failed cgpops cases against other methods
+        other_methods = methods[1:]  # Remove cgpops from methods
+        
+        for i in range(N):
+            # Only process if cgpops failed (negative status)
+            if cgpops["status"][i] < 0:
+                cgpops_T = cgpops["T"][i]
+                
+                # Check against all other available methods
+                for method in other_methods:
+                    method_T = data[method]["T"][i]
+                    method_status = data[method]["status"][i]
+                    
+                    # If T values are equal and the other method succeeded
+                    if abs(cgpops_T - method_T) < 0.1 and method_status >= 0:
+                        cgpops["status"][i] = 2
+                        break  # Stop checking other methods for this case
+        
+        for i in range(N):
+            if cgpops["time"][i] > 0.5:
+                not_real_time += 1
+            if cgpops["status"][i] >= 0:
+                avg_time_success += cgpops["time"][i]
+                n_success += 1
+        
+        cgpops["avg_time_success"] = avg_time_success / n_success if n_success > 0 else np.nan
+        cgpops["success_rate"] = n_success / N * 100
+        cgpops["not_real_time_rate"] = not_real_time / N * 100
+        
+        results['cgpops'] = {
+            'avg_time': cgpops["avg_time"],
+            'avg_time_success': cgpops["avg_time_success"],
+            'success_rate': cgpops["success_rate"],
+            'not_real_time_rate': cgpops["not_real_time_rate"],
+            'n_success': n_success
+        }
+
+    # Extract rest of data
+    comparison_methods = ['no_pso', 'pso_full', 'pso_sto']
+    for col in comparison_methods:
+        if col not in data:
+            continue
+            
+        data[col]["avg_time"] = np.mean(data[col]["time"])
+        n_success = 0
+        T_diff = 0
+        T_diff_success = 0
+        time_success = 0
+        not_real_time = 0
+        T_diff_pso = 0
+        T_diff_pso_success = 0
+        time_diff = 0
+        time_diff_success = 0
+        
+        for i in range(N):
+            T = data[col]["T"][i]
+            T_cgpops = data["cgpops"]["T"][i] if "cgpops" in data else 0
+            T_diff += T - T_cgpops
+            if data[col]["time"][i] > 0.5:
+                not_real_time += 1
+
+            if abs(T - T_cgpops) < 0.1 and (data["cgpops"]["status"][i] >= 0) and (data[col]["status"][i] < 0):
+                data[col]["status"][i] = 2  # Mark as fake failed case
+
+            if data[col]["status"][i] >= 0:
+                time_success += data[col]["time"][i]
+                T_diff_success += T - T_cgpops
+                n_success += 1
+            
+            if col in ['pso_full', 'pso_sto'] and 'no_pso' in data:
+                T_diff_pso += data[col]["T"][i] - data["no_pso"]["T"][i]
+                time_diff += data[col]["time"][i] - data["no_pso"]["time"][i]
+                if data[col]["status"][i] >= 0:
+                    T_diff_pso_success += data[col]["T"][i] - data["no_pso"]["T"][i]
+                    time_diff_success += data[col]["time"][i] - data["no_pso"]["time"][i]
+
+        data[col]["success_rate"] = n_success / N * 100
+        data[col]["avg_T_diff"] = T_diff / N
+        data[col]["avg_T_diff_success"] = T_diff_success / n_success if n_success > 0 else np.nan
+        data[col]["avg_time_success"] = time_success / n_success if n_success > 0 else np.nan
+        data[col]["not_real_time_rate"] = not_real_time / N * 100
+        
+        results[col] = {
+            'avg_time': data[col]["avg_time"],
+            'avg_time_success': data[col]["avg_time_success"],
+            'success_rate': data[col]["success_rate"],
+            'not_real_time_rate': data[col]["not_real_time_rate"],
+            'avg_T_diff': data[col]["avg_T_diff"],
+            'avg_T_diff_success': data[col]["avg_T_diff_success"],
+            'n_success': n_success
+        }
+        
+        if col in ['pso_full', 'pso_sto']:
+            if "time_on_pso" in data[col] and "time_on_solver" in data[col]:
+                data[col]["avg_time_on_pso"] = np.mean(data[col]["time_on_pso"])
+                data[col]["avg_time_on_solver"] = np.mean(data[col]["time_on_solver"])
+                results[col]["avg_time_on_pso"] = data[col]["avg_time_on_pso"]
+                results[col]["avg_time_on_solver"] = data[col]["avg_time_on_solver"]
+            
+            if 'no_pso' in data:
+                data[col]["avg_T_diff_pso"] = T_diff_pso / N
+                data[col]["avg_T_diff_pso_success"] = T_diff_pso_success / n_success if n_success > 0 else np.nan
+                data[col]["avg_time_diff"] = time_diff / N
+                data[col]["avg_time_diff_success"] = time_diff_success / n_success if n_success > 0 else np.nan
+                
+                results[col]["avg_T_diff_pso"] = data[col]["avg_T_diff_pso"]
+                results[col]["avg_T_diff_pso_success"] = data[col]["avg_T_diff_pso_success"]
+                results[col]["avg_time_diff"] = data[col]["avg_time_diff"]
+                results[col]["avg_time_diff_success"] = data[col]["avg_time_diff_success"]
+
+    # Print statistics
+    print(f"\n{'='*60}")
+    print(f"ANALYSIS RESULTS")
+    print(f"{'='*60}")
+    print(f"Total Simulations: {N}\n")
+    
+    # Print CGPOPS results
+    if 'cgpops' in results:
+        print(f"CGPOPS:")
+        print(f"  Success Rate: {results['cgpops']['success_rate']:.2f}%")
+        print(f"  Average Time: {results['cgpops']['avg_time']:.4f} s")
+        print(f"  Average Time (success only): {results['cgpops']['avg_time_success']:.4f} s")
+        print(f"  Not Real-Time Rate: {results['cgpops']['not_real_time_rate']:.2f}%")
+        print()
+    
+    # Print other methods
+    for method in ['no_pso', 'pso_full', 'pso_sto']:
+        if method not in results:
+            continue
+        
+        print(f"{method.upper().replace('_', ' ')}:")
+        print(f"  Success Rate: {results[method]['success_rate']:.2f}%")
+        print(f"  Average Time: {results[method]['avg_time']:.4f} s")
+        print(f"  Average Time (success only): {results[method]['avg_time_success']:.4f} s")
+        print(f"  Not Real-Time Rate: {results[method]['not_real_time_rate']:.2f}%")
+        
+        if 'cgpops' in results:
+            print(f"  Average T Difference vs CGPOPS: {results[method]['avg_T_diff']:.4f} s")
+            print(f"  Average T Difference vs CGPOPS (success only): {results[method]['avg_T_diff_success']:.4f} s")
+        
+        if method in ['pso_full', 'pso_sto']:
+            if 'avg_time_on_pso' in results[method]:
+                print(f"  Average Time on PSO: {results[method]['avg_time_on_pso']:.4f} s")
+                print(f"  Average Time on Solver: {results[method]['avg_time_on_solver']:.4f} s")
+            
+            if 'no_pso' in results:
+                print(f"  Average T Difference vs NO_PSO: {results[method]['avg_T_diff_pso']:.4f} s")
+                print(f"  Average T Difference vs NO_PSO (success only): {results[method]['avg_T_diff_pso_success']:.4f} s")
+                print(f"  Average Time Difference vs NO_PSO: {results[method]['avg_time_diff']:.4f} s")
+                print(f"  Average Time Difference vs NO_PSO (success only): {results[method]['avg_time_diff_success']:.4f} s")
+        
+        print()
+    
+    print(f"{'='*60}\n")
+    
+    results['total_sims'] = N
+    return results
+
+def plot_data(results, save_name):
+    """
+    Creates comprehensive bar graphs comparing different methods.
+    
+    Parameters:
+        results (dict): Dictionary containing analysis results
         save_name (str): The name of the plot when saved.
     """
-    # Extract data from dictionary
-    N = data_dict['total_sims']
-    failed_both = data_dict['failed_both']
-    failed_sol = data_dict['failed_sol']
-    failed_pso = data_dict['failed_pso']
-    pso_better = data_dict['pso_better']
-    pso_worse = data_dict['pso_worse']
-    pso_same = data_dict['pso_same']
-    solver_faster = data_dict['solver_faster']
-    solver_slower = data_dict['solver_slower']
+    methods = [m for m in ['cgpops', 'no_pso', 'pso_full', 'pso_sto'] if m in results and m != 'total_sims']
     
-    successful_sims = N - failed_sol - failed_pso + failed_both  # Adjust for double-counted failures
+    if len(methods) < 2:
+        print("Warning: Not enough methods to compare")
+        return
     
-    # Calculate percentages
-    # Group 1: Success rates (out of total simulations)
-    success_percentages = [
-        (failed_both / N) * 100,           # Failed simulations
-        (failed_sol / N) * 100,         # Repeated PSO
-        (failed_pso / N) * 100            # Failed PSO
-    ]
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig.suptitle('Method Performance Comparison', fontsize=16, fontweight='bold')
     
-    # Group 2: Solution quality (out of successful simulations)
-    solution_percentages = [
-        (pso_better / N) * 100,  # PSO better
-        (pso_worse / N) * 100,   # PSO worse
-        (pso_same / N) * 100     # Equal solutions
-    ]
+    # Define colors for each method
+    colors = {
+        'cgpops': '#FF6B6B',
+        'no_pso': '#4ECDC4',
+        'pso_full': '#45B7D1',
+        'pso_sto': '#96CEB4'
+    }
     
-    # Group 3: Time performance (out of successful simulations)
-    time_percentages = [
-        (solver_faster / successful_sims) * 100,  # Solver faster with PSO
-        (solver_slower / successful_sims) * 100   # Solver slower with PSO
-    ]
+    method_labels = {
+        'cgpops': 'CGPOPS',
+        'no_pso': 'No PSO',
+        'pso_full': 'PSO Full',
+        'pso_sto': 'PSO STO'
+    }
     
-    # Create figure and axis
-    fig, ax = plt.subplots(figsize=(12, 7))
+    # Plot 1: Success Rate
+    ax1 = axes[0, 0]
+    success_rates = [results[m]['success_rate'] for m in methods]
+    bars1 = ax1.bar(range(len(methods)), success_rates, color=[colors[m] for m in methods])
+    ax1.set_ylabel('Success Rate (%)', fontweight='bold')
+    ax1.set_title('Success Rate Comparison')
+    ax1.set_xticks(range(len(methods)))
+    ax1.set_xticklabels([method_labels[m] for m in methods])
+    ax1.set_ylim(0, 105)
+    ax1.grid(True, linestyle='--', alpha=0.3, axis='y')
     
-    # Define bar positions
-    x_pos = np.arange(3)  # Three groups
-    bar_width = 0.25
+    # Add value labels on bars
+    for bar, val in zip(bars1, success_rates):
+        height = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2., height + 1,
+                f'{val:.1f}%', ha='center', va='bottom', fontsize=10)
     
-    # Define colors for each category
-    colors_group1 = ['#FF6B6B', '#FFE66D', '#FF8E53']  # Red tones for failures
-    colors_group2 = ['#4ECDC4', '#45B7D1', '#96CEB4']  # Blue-green tones for solutions
-    colors_group3 = ['#9B59B6', '#E74C3C']             # Purple-red for time
+    # Plot 2: Average Time
+    ax2 = axes[0, 1]
+    avg_times = [results[m]['avg_time'] for m in methods]
+    bars2 = ax2.bar(range(len(methods)), avg_times, color=[colors[m] for m in methods])
+    ax2.set_ylabel('Time (s)', fontweight='bold')
+    ax2.set_title('Average Computation Time')
+    ax2.set_xticks(range(len(methods)))
+    ax2.set_xticklabels([method_labels[m] for m in methods])
+    ax2.grid(True, linestyle='--', alpha=0.3, axis='y')
     
-    # Group 1: Success bars
-    bars1_1 = ax.bar(x_pos[0] - bar_width, success_percentages[0], bar_width, 
-                     color=colors_group1[0])
-    bars1_2 = ax.bar(x_pos[0], success_percentages[1], bar_width, 
-                     color=colors_group1[1])
-    bars1_3 = ax.bar(x_pos[0] + bar_width, success_percentages[2], bar_width, 
-                     color=colors_group1[2])
+    for bar, val in zip(bars2, avg_times):
+        height = bar.get_height()
+        ax2.text(bar.get_x() + bar.get_width()/2., height,
+                f'{val:.3f}s', ha='center', va='bottom', fontsize=10)
     
-    # Group 2: Solution bars
-    bars2_1 = ax.bar(x_pos[1] - bar_width, solution_percentages[0], bar_width, 
-                     color=colors_group2[0])
-    bars2_2 = ax.bar(x_pos[1], solution_percentages[1], bar_width, 
-                     color=colors_group2[1])
-    bars2_3 = ax.bar(x_pos[1] + bar_width, solution_percentages[2], bar_width, 
-                     color=colors_group2[2])
+    # Plot 3: Not Real-Time Rate
+    ax3 = axes[1, 0]
+    not_rt_rates = [results[m]['not_real_time_rate'] for m in methods]
+    bars3 = ax3.bar(range(len(methods)), not_rt_rates, color=[colors[m] for m in methods])
+    ax3.set_ylabel('Not Real-Time Rate (%)', fontweight='bold')
+    ax3.set_title('Not Real-Time Rate (> 0.5s)')
+    ax3.set_xticks(range(len(methods)))
+    ax3.set_xticklabels([method_labels[m] for m in methods])
+    ax3.set_ylim(0, max(not_rt_rates) * 1.2)
+    ax3.grid(True, linestyle='--', alpha=0.3, axis='y')
     
-    # Group 3: Time bars
-    bars3_1 = ax.bar(x_pos[2] - bar_width/2, time_percentages[0], bar_width, 
-                     color=colors_group3[0])
-    bars3_2 = ax.bar(x_pos[2] + bar_width/2, time_percentages[1], bar_width, 
-                     color=colors_group3[1])
+    for bar, val in zip(bars3, not_rt_rates):
+        height = bar.get_height()
+        ax3.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                f'{val:.1f}%', ha='center', va='bottom', fontsize=10)
     
-    # Add percentage labels on bars at the top
-    def add_percentage_labels(bars, percentages, labels):
-        for bar_container, percentage, label in zip(bars, percentages, labels):
-            for bar in bar_container:  # Iterate over each bar in the BarContainer
-                height = bar.get_height()
-                # Position percentage label at the top of the bar
-                ax.text(bar.get_x() + bar.get_width()/2., height + 1,  # Position above the bar
-                        f'{percentage:.1f}%', ha='center', va='bottom', fontsize=10, color='black')
+    # Plot 4: Time breakdown for PSO methods
+    ax4 = axes[1, 1]
+    pso_methods = [m for m in methods if m in ['pso_full', 'pso_sto']]
+    
+    if pso_methods and all('avg_time_on_pso' in results[m] for m in pso_methods):
+        x = np.arange(len(pso_methods))
+        width = 0.35
+        
+        pso_times = [results[m]['avg_time_on_pso'] for m in pso_methods]
+        solver_times = [results[m]['avg_time_on_solver'] for m in pso_methods]
+        
+        bars4a = ax4.bar(x - width/2, pso_times, width, label='PSO Time', color='#9B59B6')
+        bars4b = ax4.bar(x + width/2, solver_times, width, label='Solver Time', color='#E74C3C')
+        
+        ax4.set_ylabel('Time (s)', fontweight='bold')
+        ax4.set_title('Time Breakdown for PSO Methods')
+        ax4.set_xticks(x)
+        ax4.set_xticklabels([method_labels[m] for m in pso_methods])
+        ax4.legend()
+        ax4.grid(True, linestyle='--', alpha=0.3, axis='y')
+        
+        # Add value labels
+        for bar, val in zip(bars4a, pso_times):
+            height = bar.get_height()
+            ax4.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{val:.3f}s', ha='center', va='bottom', fontsize=9)
+        
+        for bar, val in zip(bars4b, solver_times):
+            height = bar.get_height()
+            ax4.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{val:.3f}s', ha='center', va='bottom', fontsize=9)
+    else:
+        # Plot T difference if no PSO time breakdown
+        if 'cgpops' in results:
+            comparison_methods = [m for m in methods if m != 'cgpops' and 'avg_T_diff' in results[m]]
+            if comparison_methods:
+                T_diffs = [results[m]['avg_T_diff'] for m in comparison_methods]
+                bars4 = ax4.bar(range(len(comparison_methods)), T_diffs, 
+                              color=[colors[m] for m in comparison_methods])
+                ax4.set_ylabel('T Difference (s)', fontweight='bold')
+                ax4.set_title('Average T Difference vs CGPOPS')
+                ax4.set_xticks(range(len(comparison_methods)))
+                ax4.set_xticklabels([method_labels[m] for m in comparison_methods])
+                ax4.grid(True, linestyle='--', alpha=0.3, axis='y')
+                ax4.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
                 
-                # Check if the bar is short for vertical label placement
-                if height < 10:  # Adjust this threshold as needed
-                    ax.text(bar.get_x() + bar.get_width()/2., height + 4,  # Position above the bar
-                            label, ha='center', va='bottom', fontsize=10, color='black')
-                else:
-                    ax.text(bar.get_x() + bar.get_width()/2., height / 2,  # Position inside the bar
-                            label, ha='center', va='center', fontsize=10, color='black', rotation=90)
+                for bar, val in zip(bars4, T_diffs):
+                    height = bar.get_height()
+                    ax4.text(bar.get_x() + bar.get_width()/2., height,
+                            f'{val:.4f}s', ha='center', 
+                            va='bottom' if val >= 0 else 'top', fontsize=9)
     
-    add_percentage_labels([bars1_1, bars1_2, bars1_3], success_percentages, ['Failed Both', 'Failed Sol', 'Failed PSO'])
-    add_percentage_labels([bars2_1, bars2_2, bars2_3], solution_percentages, ['PSO Better', 'PSO Worse', 'Equal Solutions'])
-    add_percentage_labels([bars3_1, bars3_2], time_percentages, ['Faster w/ PSO', 'Slower w/ PSO'])
-    
-    # Customize the plot
-    ax.set_xlabel('Performance Categories', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Percentage (%)', fontsize=12, fontweight='bold')
-    ax.set_title('PSO Performance Analysis', fontsize=14, fontweight='bold')
-    
-    # Set x-axis labels
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(['Success Rate', 'Solution Quality', 'Time Performance'])
-    
-    # Set y-axis to show appropriate range
-    max_percentage = max(max(success_percentages), max(solution_percentages), max(time_percentages))
-    ax.set_ylim(0, max_percentage + 10)
-    
-    # Add grid for better readability
-    ax.grid(True, linestyle='--', alpha=0.7, axis='y')
-    ax.set_axisbelow(True)
-    
-    # Adjust layout to prevent legend cutoff
     plt.tight_layout()
-    
-    # Save the plot
-    plt.savefig(f"{save_name}", format="pdf", dpi=600, transparent=False, bbox_inches='tight')
+    plt.savefig(save_name, format="pdf", dpi=600, transparent=False, bbox_inches='tight')
+    print(f"Plot saved to {save_name}")
     plt.show()
 
 # ============================
@@ -178,105 +420,48 @@ def plot_data(data_dict, save_name):
 
 if __name__ == "__main__":
     # ------------------------------
-    # Read and Process Data
+    # Determine the correct path
     # ------------------------------
-    try:
-        data = import_results("../../output/mcs/results.csv")
-        save_name = "../../output/results_analysis.pdf"
-    except Exception as e:
-        try:
-            data = import_results("../output/mcs/results.csv")
-            save_name = "../output/results_analysis.pdf"
-        except Exception as e:
-            print("Error: Could not read results file.")
-            raise e
-
-    time_spent_in_pso = np.mean(data["pso_time"])
-    time_solver_Wpso = np.mean(data["solve_time"])
-    time_solver_WOpso = np.mean(data["solve_time_1"])
-    total_time = np.mean(data["total_time"])
-    sol_comparison = np.mean(data["sol_comparison"])
-    time_comparison = np.mean(data["time_comparison"])
-    failed_sol = 0
-    failed_both = 0
-    failed_pso = 0
-    pso_better = 0
-    pso_worse = 0
-    pso_same = 0
-    solver_faster = 0
-    solver_slower = 0
-    failed_sol_indices = []
-    failed_pso_indices = []
-    pso_failed = False
-    solver_failed = False
-
-    N = len(data["pso_time"])
-    for i in range(N):
-        if data["status"][i] == -3:
-            failed_sol += 1
-            failed_sol_indices.append(i)
-            solver_failed = True
-        elif data["status"][i] == -4:
-            failed_pso += 1
-            failed_pso_indices.append(i)
-            pso_failed = True
-        elif data["status"][i] == -34:
-            failed_sol += 1
-            failed_pso += 1
-            failed_both += 1
-            failed_sol_indices.append(i)
-            failed_pso_indices.append(i)
-            solver_failed = True
-            pso_failed = True
-
-        if (round(data["sol_comparison"][i], 3)  > 0 and not pso_failed) or (not pso_failed and solver_failed):
-            pso_better += 1
-        elif (round(data["sol_comparison"][i], 3) < 0 and not solver_failed) or (pso_failed and not solver_failed):
-            pso_worse += 1
-        else:
-            pso_same += 1
-        
-        if data["time_comparison"][i] > 0 and not solver_failed and not pso_failed:
-            solver_faster += 1
-        elif data["time_comparison"][i] < 0 and not solver_failed and not pso_failed:
-            solver_slower += 1
-        
-        pso_failed = False
-        solver_failed = False
-
-    print(f"Total Simulations: {N}")
-    print(f"Failed Simulations: {failed_both} ({(failed_both/N)*100:.2f}%)")
-    print(f"Failed Solver Runs: {failed_sol} ({(failed_sol/N)*100:.2f}%)")
-    print(f"Failed PSO Runs: {failed_pso} ({(failed_pso/N)*100:.2f}%)")
-    print(f"Average Time in PSO: {time_spent_in_pso:.2f} seconds")
-    print(f"Average Time in Solver with PSO: {time_solver_Wpso:.2f} seconds")
-    print(f"Average Time in Solver without PSO: {time_solver_WOpso:.2f} seconds")
-    print(f"Average Total Time: {total_time:.2f} seconds")
-    print(f"PSO Better Solutions: {pso_better} ({(pso_better/(N))*100:.2f}%)")
-    print(f"PSO Worse Solutions: {pso_worse} ({(pso_worse/(N))*100:.2f}%)")
-    print(f"PSO Same Solutions: {pso_same} ({(pso_same/(N))*100:.2f}%)")
-    print(f"Solver Faster with PSO: {solver_faster} ({(solver_faster/(N-failed_sol-failed_pso + failed_both))*100:.2f}%)")
-    print(f"Solver Slower with PSO: {solver_slower} ({(solver_slower/(N-failed_sol-failed_pso + failed_both))*100:.2f}%)")
-
+    possible_paths = [
+        "../../output/mcs/",
+        "../output/mcs/",
+        "output/mcs/"
+    ]
+    
+    mcs_directory = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            mcs_directory = path
+            break
+    
+    if mcs_directory is None:
+        print("Error: Could not find output/mcs/ directory")
+        exit(1)
+    
+    print(f"Using directory: {mcs_directory}")
+    
     # ------------------------------
-    # Prepare Data for Summary Plot
+    # Import all CSV files
     # ------------------------------
-
-    summary_data = {
-        'total_sims': N,
-        'failed_both': failed_both,
-        'failed_sol': failed_sol,
-        'failed_pso': failed_pso,
-        'pso_better': pso_better,
-        'pso_worse': pso_worse,
-        'pso_same': pso_same,
-        'solver_faster': solver_faster,
-        'solver_slower': solver_slower
-    }
-
+    all_data = import_all_csv_files(mcs_directory)
+    
+    if not all_data:
+        print("Error: No data loaded")
+        exit(1)
+    
     # ------------------------------
-    # Generate Plots
+    # Process each file
     # ------------------------------
-
-    # 2. Summary Bar Graph
-    plot_data(summary_data, save_name)
+    #if "pso_sto_tuning" in all_data or "pso_full_tuning" in all_data:
+        #tune_pso(all_data)
+    if "cgpops" in all_data:        
+        summary_data = analyze_results(all_data)
+        if summary_data:
+            # Generate plot
+            output_dir = os.path.dirname(mcs_directory.rstrip('/'))
+            save_name = os.path.join(output_dir, f"mcs_analysis.pdf")
+            plot_data(summary_data, save_name)
+    
+    print(f"\n{'='*60}")
+    print(f"Processing complete!")
+    print(f"{'='*60}")

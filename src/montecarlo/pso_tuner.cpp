@@ -15,13 +15,13 @@ using namespace casadi;
 
 int main() {
 
-    int tuning_iterations = 1000;
+    int tuning_iterations = 2000;
 
     // Load pre-generated quaternion samples from CSV
     std::vector<std::vector<double>> initial_states;
     std::vector<std::vector<double>> final_states;
     
-    if (!loadStateSamples(initial_states, final_states, "../output/mcs/lhs_pso_samples.csv")) {
+    if (!loadStateSamples(initial_states, final_states, "../output/lhs_pso_samples.csv")) {
         return 1;
     }
     int iterations = initial_states.size();
@@ -44,9 +44,9 @@ int main() {
     double min_min_inertia = 0.0;     // Minimum inertia weight
     double min_min_cognitive = 0.0;   // Minimum cognitive coefficient
     double min_min_social = 0.0;      // Minimum social coefficient
-    double max_min_inertia = 10.0;     // Minimum inertia weight
-    double max_min_cognitive = 10.0;   // Minimum cognitive coefficient
-    double max_min_social = 10.0;      // Minimum social coefficient
+    double max_min_inertia = 1.0;     // Minimum inertia weight
+    double max_min_cognitive = 1.0;   // Minimum cognitive coefficient
+    double max_min_social = 1.0;      // Minimum social coefficient
     double max_sigmoid_alpha = 10.0;  // Sigmoid alpha for stochastic control sign
     double min_sigmoid_alpha = 0.1;  // Sigmoid alpha for stochastic control sign
     double min_sigmoid_saturation = 0.5; // Minimum sigmoid saturation limit for control sign
@@ -68,14 +68,14 @@ int main() {
     Function solver = get_solver();
 
     // Open CSV file for logging results
-    std::ofstream results_file("../output/mcs/pso_sto_tuning.csv");
+    std::ofstream results_file("../output/pso_params/pso_sto_tuning.csv");
     if (!results_file.is_open()) {
         std::cerr << "Error: Could not open results CSV file for writing" << std::endl;
         return 1;
     }
 
     // Write header
-    results_file << "avg_time, avg_time_on_pso, avg_time_on_solver, n_bad_status\n";
+    results_file << "part, iter, w, c1, c2, min_w, min_c1, min_c2, alpha, sat, avg_time, avg_time_on_pso, avg_time_on_solver, n_bad_status\n";
     results_file << std::fixed << std::setprecision(3);
 
     // Progress tracking
@@ -84,16 +84,16 @@ int main() {
     std::cout << "Starting optimization of " << tuning_iterations << " samples..." << std::endl;
     int sample_count = 0;
     for (const auto& sample : samples) {
-        int n_particles = static_cast<int>(std::round(sample[0] * n_cores));
-        int n_iterations = static_cast<int>(std::round(sample[1]));
-        double inertia_weight = sample[2];
-        double cognitive_coeff = sample[3];
-        double social_coeff = sample[4];
-        double min_inertia = sample[5];
-        double min_cognitive = sample[6];
-        double min_social = sample[7];
-        double sigmoid_alpha = sample[8];
-        double sigmoid_saturation = sample[9];
+        int n_particles = static_cast<int>(std::round(sample[0]) * n_cores);
+        int n_iterations = static_cast<int>(std::round(sample[1] / 50.0) * 50);
+        double inertia_weight = std::round(sample[2] * 10.0) / 10.0;
+        double cognitive_coeff = std::round(sample[3] * 10.0) / 10.0;
+        double social_coeff = std::round(sample[4] * 10.0) / 10.0;
+        double min_inertia = std::round(sample[5] * sample[2] * 10.0) / 10.0;
+        double min_cognitive = std::round(sample[6] * sample[3] * 10.0) / 10.0;
+        double min_social = std::round(sample[7] * sample[4] * 10.0) / 10.0;
+        double sigmoid_alpha = std::round(sample[8] * 10.0) / 10.0;
+        double sigmoid_saturation = std::round(sample[9] * 10.0) / 10.0;
 
         if (min_social > social_coeff || min_cognitive > cognitive_coeff || min_inertia > inertia_weight) {
             continue;
@@ -153,24 +153,34 @@ int main() {
 
         }
         // Log results to CSV
-        results_file << (total_time_accum / iterations) << ", "
+        results_file << n_particles << ", "
+                     << n_iterations << ", "
+                     << inertia_weight << ", "
+                     << cognitive_coeff << ", "
+                     << social_coeff << ", "
+                     << min_inertia << ", "
+                     << min_cognitive << ", "
+                     << min_social << ", "
+                     << sigmoid_alpha << ", "
+                     << sigmoid_saturation << ", "
+                     << (total_time_accum / iterations) << ", "
                      << (pso_time_accum / iterations) << ", "
                      << (solver_time_accum / iterations) << ", "
                      << n_bad_status << "\n";
 
         // Progress report
-        if ((sample_count + 1) % report_interval == 0 || (sample_count + 1) == iterations) {
+        if ((sample_count + 1) % report_interval == 0 || (sample_count + 1) == tuning_iterations) {
             auto current_time = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - total_start).count();
-            double time_left = (static_cast<double>(elapsed) / (sample_count + 1)) * (iterations - (sample_count + 1));
-            double progress = 100.0 * (sample_count + 1) / iterations;
-            int mins = elapsed / 60;
+            double time_left = (static_cast<double>(elapsed) / (sample_count + 1)) * (tuning_iterations - (sample_count + 1));
+            double progress = 100.0 * (sample_count + 1) / tuning_iterations;
+            int minutes = elapsed / 60;
             int secs = elapsed % 60;
             int mins_left = time_left / 60;
             int secs_left = fmod(time_left, 60);
-            std::cout << "Progress: " << (sample_count + 1) << "/" << iterations
+            std::cout << "Progress: " << (sample_count + 1) << "/" << tuning_iterations
                     << " (" << std::fixed << std::setprecision(1) << progress << "%)" << std::endl
-                    << "Elapsed time: " << std::setprecision(1) << mins << " min " << secs << " sec, "
+                    << "Elapsed time: " << std::setprecision(1) << minutes << " min " << secs << " sec, "
                     << "Estimated time left: " << std::setprecision(1) << mins_left << " min " << secs_left << " sec" << std::endl;
         }
         sample_count++;
@@ -178,11 +188,11 @@ int main() {
         }
 
     results_file.close();
-    std::cout << "Results logged to output/mcs/pso_sto_tuning.csv" << std::endl;
+    std::cout << "Results logged to output/pso_params/pso_sto_tuning.csv" << std::endl;
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_elapsed = std::chrono::duration_cast<std::chrono::seconds>(total_end - total_start).count();
-    int mins = total_elapsed / 60;
+    int minutes = total_elapsed / 60;
     int secs = total_elapsed % 60;
-    std::cout << "Completed in " << mins << " minutes and " << secs << " seconds" << std::endl;    
+    std::cout << "Completed in " << minutes << " minutes and " << secs << " seconds" << std::endl;    
     return 0;
 }
