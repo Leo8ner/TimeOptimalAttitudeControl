@@ -13,69 +13,67 @@
 
 using namespace casadi;
 
-int main() {
+int main(int argc, char** argv) {
+    // PSO parameter tuning
 
-    int tuning_iterations = 2000;
+    int file_index;
+    PSOMethod pso_method;
+    std::string method_string;
+
+    // Parse arguments:
+    // usage: prog [pso method] [file_index]
+    if (argc > 1) {
+        method_string = argv[1];
+        if (method_string == "sto") {
+            pso_method = PSOMethod::STO;
+        } else if (method_string == "full") {
+            pso_method = PSOMethod::FULL;
+        } else {
+            std::cerr << "Error: Unknown PSO method '" << method_string << "'. Use 'sto' or 'full'." << std::endl;
+            return 1;
+        }
+    }
+
+    if (argc > 2) {
+        file_index = std::atoi(argv[2]);
+        if (file_index <= 0) {
+            std::cerr << "Error: file_index must be a positive integer." << std::endl;
+            return 1;
+        }
+    } else {
+        std::cout << "Correct usage: " << argv[0] << " [pso method (sto|full)] [file_index]\n";
+        return 1;
+    }
+
+    // Load PSO parameter samples from CSV
+    std::vector<std::vector<double>> pso_params;
+    std::string params_file = "../output/pso_params/lhs_pso_params_samples_" + std::to_string(file_index) + ".csv";
+    if (!loadPSOSamples(pso_params, params_file)) {
+        return 1;
+    }
+    int tuning_iterations = pso_params.size();
 
     // Load pre-generated quaternion samples from CSV
     std::vector<std::vector<double>> initial_states;
     std::vector<std::vector<double>> final_states;
-    
-    if (!loadStateSamples(initial_states, final_states, "../output/lhs_pso_samples.csv")) {
+
+    if (!loadStateSamples(initial_states, final_states, "../output/pso_params/lhs_pso_samples.csv")) {
         return 1;
     }
     int iterations = initial_states.size();
 
-    // PSO parameters
-    int n_cores = 640;
-    double min_particles = 1.0;       // Minimum number of particles in swarm
-    double max_particles = 10.0;       // Maximum number of particles in swarm
-    double max_iterations = 500.0;       // Number of PSO iterations
-    double min_iterations = 50.0;       // Minimum number of PSO iterations
-    double min_inertia_weight = 0.1;  // Inertia weight
-    double max_inertia_weight = 10.0;  // Inertia weight
-    double min_cognitive_coeff = 0.1; // Cognitive coefficient
-    double max_cognitive_coeff = 10.0; // Cognitive coefficient
-    double min_social_coeff = 0.1;    // Social coefficient
-    double max_social_coeff = 10.0;    // Social coefficient
-    bool decay_inertia = true;    // Enable inertia weight decay
-    bool decay_cognitive = true;  // Enable cognitive coefficient decay
-    bool decay_social = true;     // Enable social coefficient decay
-    double min_min_inertia = 0.0;     // Minimum inertia weight
-    double min_min_cognitive = 0.0;   // Minimum cognitive coefficient
-    double min_min_social = 0.0;      // Minimum social coefficient
-    double max_min_inertia = 1.0;     // Minimum inertia weight
-    double max_min_cognitive = 1.0;   // Minimum cognitive coefficient
-    double max_min_social = 1.0;      // Minimum social coefficient
-    double max_sigmoid_alpha = 10.0;  // Sigmoid alpha for stochastic control sign
-    double min_sigmoid_alpha = 0.1;  // Sigmoid alpha for stochastic control sign
-    double min_sigmoid_saturation = 0.5; // Minimum sigmoid saturation limit for control sign
-    double max_sigmoid_saturation = 1.0; // Maximum sigmoid saturation limit for control sign
-
-    LHS lhs(tuning_iterations, 10);
-    
-    std::vector<double> mins = {
-        min_particles, min_iterations, min_inertia_weight, min_cognitive_coeff, min_social_coeff,
-        min_min_inertia, min_min_cognitive, min_min_social, min_sigmoid_alpha, min_sigmoid_saturation
-    };
-    std::vector<double> maxs = {
-        max_particles, max_iterations, max_inertia_weight, max_cognitive_coeff, max_social_coeff,
-        max_min_inertia, max_min_cognitive, max_min_social, max_sigmoid_alpha, max_sigmoid_saturation
-    };
-
-    auto samples = lhs.sampleBounded(mins, maxs);
-
     Function solver = get_solver();
 
     // Open CSV file for logging results
-    std::ofstream results_file("../output/pso_params/pso_sto_tuning.csv");
+    std::string output_file = "../output/pso_params/pso_" + method_string + "_tuning_" + std::to_string(file_index) + ".csv";
+    std::ofstream results_file(output_file);
     if (!results_file.is_open()) {
         std::cerr << "Error: Could not open results CSV file for writing" << std::endl;
         return 1;
     }
 
     // Write header
-    results_file << "part, iter, w, c1, c2, min_w, min_c1, min_c2, alpha, sat, avg_time, avg_time_on_pso, avg_time_on_solver, n_bad_status\n";
+    results_file << "avg_time,avg_time_on_pso,avg_time_on_solver,n_bad_status\n";
     results_file << std::fixed << std::setprecision(3);
 
     // Progress tracking
@@ -83,27 +81,29 @@ int main() {
     int report_interval = std::max(1, tuning_iterations / 20); // Report every 5%
     std::cout << "Starting optimization of " << tuning_iterations << " samples..." << std::endl;
     int sample_count = 0;
-    for (const auto& sample : samples) {
-        int n_particles = static_cast<int>(std::round(sample[0]) * n_cores);
-        int n_iterations = static_cast<int>(std::round(sample[1] / 50.0) * 50);
-        double inertia_weight = std::round(sample[2] * 10.0) / 10.0;
-        double cognitive_coeff = std::round(sample[3] * 10.0) / 10.0;
-        double social_coeff = std::round(sample[4] * 10.0) / 10.0;
-        double min_inertia = std::round(sample[5] * sample[2] * 10.0) / 10.0;
-        double min_cognitive = std::round(sample[6] * sample[3] * 10.0) / 10.0;
-        double min_social = std::round(sample[7] * sample[4] * 10.0) / 10.0;
-        double sigmoid_alpha = std::round(sample[8] * 10.0) / 10.0;
-        double sigmoid_saturation = std::round(sample[9] * 10.0) / 10.0;
-
-        if (min_social > social_coeff || min_cognitive > cognitive_coeff || min_inertia > inertia_weight) {
-            continue;
-        }
+    for (const auto& sample : pso_params) {
+        int n_particles = static_cast<int>(sample[0]);
+        int n_iterations = static_cast<int>(sample[1]);
+        double inertia_weight = sample[2];
+        double cognitive_coeff = sample[3];
+        double social_coeff = sample[4];
+        double min_inertia = sample[5];
+        double min_cognitive = sample[6];
+        double min_social = sample[7];
+        double sigmoid_alpha = sample[8];
+        double sigmoid_saturation = sample[9];
+        bool decay_inertia = true;
+        bool decay_cognitive = true;
+        bool decay_social = true;
 
         DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
-        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::STO, false, n_particles); // Create PSO optimizer instance
+
+
+        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, pso_method, false, n_particles); // Create PSO optimizer instance
         initial_guess.setPSOParameters(n_iterations, inertia_weight, cognitive_coeff, social_coeff,
                                     decay_inertia, decay_cognitive, decay_social,
-                                    min_inertia, min_cognitive, min_social);  
+                                    min_inertia, min_cognitive, min_social, sigmoid_alpha, sigmoid_saturation);  
+
 
         double total_time_accum = 0.0;
         double pso_time_accum = 0.0;
@@ -153,19 +153,9 @@ int main() {
 
         }
         // Log results to CSV
-        results_file << n_particles << ", "
-                     << n_iterations << ", "
-                     << inertia_weight << ", "
-                     << cognitive_coeff << ", "
-                     << social_coeff << ", "
-                     << min_inertia << ", "
-                     << min_cognitive << ", "
-                     << min_social << ", "
-                     << sigmoid_alpha << ", "
-                     << sigmoid_saturation << ", "
-                     << (total_time_accum / iterations) << ", "
-                     << (pso_time_accum / iterations) << ", "
-                     << (solver_time_accum / iterations) << ", "
+        results_file << (total_time_accum / iterations) << ","
+                     << (pso_time_accum / iterations) << ","
+                     << (solver_time_accum / iterations) << ","
                      << n_bad_status << "\n";
 
         // Progress report
@@ -188,7 +178,7 @@ int main() {
         }
 
     results_file.close();
-    std::cout << "Results logged to output/pso_params/pso_sto_tuning.csv" << std::endl;
+    std::cout << "Results logged to " << output_file << std::endl;
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_elapsed = std::chrono::duration_cast<std::chrono::seconds>(total_end - total_start).count();
     int minutes = total_elapsed / 60;

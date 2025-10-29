@@ -119,7 +119,7 @@ def analyze_results(data):
         not_real_time = 0
 
         # Loop to check fake failed cgpops cases against other methods
-        other_methods = methods[1:]  # Remove cgpops from methods
+        other_methods = available_methods[1:]  # Remove cgpops from methods
         
         for i in range(N):
             # Only process if cgpops failed (negative status)
@@ -178,6 +178,8 @@ def analyze_results(data):
             T_diff += T - T_cgpops
             if data[col]["time"][i] > 0.5:
                 not_real_time += 1
+
+            
 
             if abs(T - T_cgpops) < 0.1 and (data["cgpops"]["status"][i] >= 0) and (data[col]["status"][i] < 0):
                 data[col]["status"][i] = 2  # Mark as fake failed case

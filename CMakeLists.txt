@@ -381,6 +381,9 @@ target_include_directories(PSO_TUNER PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURC
 
 add_executable(GetPSOparams src/montecarlo/pso_params.cpp)
 
+add_executable(GeneratePSOParamsSamples src/montecarlo/pso_sample_gen.cpp)
+target_link_libraries(GeneratePSOParamsSamples PRIVATE toac)
+target_include_directories(GeneratePSOParamsSamples PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 # Create run_cgpops executable
 add_executable(run_cgpops src/cgpops/cgpops_wrapper.cpp)

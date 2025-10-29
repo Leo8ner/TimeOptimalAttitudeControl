@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cmath>
+#include <regex>
 
 namespace fs = std::filesystem;
 
@@ -15,7 +16,8 @@ struct PSOResult {
     std::vector<double> params;  // All parameter columns
     double avg_time;
     int n_bad_status;
-    int row_number;
+    int row_number;              // row inside the file
+    std::string source_file;     // filename that produced this row
 };
 
 struct BestResult {
@@ -37,10 +39,10 @@ std::vector<PSOResult> readCSV(const std::string& filepath, int& num_columns) {
     std::string line;
     
     // Read header to determine number of columns
+    num_columns = 0;
     if (std::getline(file, line)) {
         std::stringstream ss(line);
         std::string value;
-        num_columns = 0;
         while (std::getline(ss, value, ',')) {
             num_columns++;
         }
@@ -55,6 +57,7 @@ std::vector<PSOResult> readCSV(const std::string& filepath, int& num_columns) {
         std::string value;
         PSOResult result;
         result.row_number = row_num++;
+        result.source_file = fs::path(filepath).filename().string();
         
         int col = 0;
         while (std::getline(ss, value, ',')) {
@@ -62,14 +65,24 @@ std::vector<PSOResult> readCSV(const std::string& filepath, int& num_columns) {
             value.erase(0, value.find_first_not_of(" \t\r\n"));
             value.erase(value.find_last_not_of(" \t\r\n") + 1);
             
-            double val = std::stod(value);
+            if (value.empty()) {
+                // treat empty as zero
+                value = "0";
+            }
+            
+            double val = 0.0;
+            try {
+                val = std::stod(value);
+            } catch (...) {
+                val = 0.0;
+            }
             
             // Last column is n_bad_status
             if (col == num_columns - 1) {
-                result.n_bad_status = static_cast<int>(val);
+                result.n_bad_status = static_cast<int>(std::round(val));
             }
-            // Second to last is avg_time (for STO it's column 10, for FULL it's column 10)
-            else if (col == num_columns - 4) {  // avg_time is 4 columns from the end
+            // avg_time is 4 columns from the end
+            else if (col == num_columns - 4) {
                 result.avg_time = val;
             }
             else {
@@ -120,7 +133,7 @@ PSOResult findBestByTime(const std::vector<PSOResult>& results) {
         if (result.avg_time < best.avg_time) {
             best = result;
         }
-        else if (std::abs(result.avg_time - best.avg_time) < 1e-9) {
+        else if (std::abs(result.avg_time - best.avg_time) < 1e-12) {
             if (result.n_bad_status < best.n_bad_status) {
                 best = result;
             }
@@ -138,7 +151,6 @@ PSOResult findBestByCompromise(const std::vector<PSOResult>& results, double wei
     }
     
     // Normalize values to compute weighted score
-    // Find min and max for normalization
     double min_time = std::numeric_limits<double>::max();
     double max_time = std::numeric_limits<double>::lowest();
     int min_status = std::numeric_limits<int>::max();
@@ -151,7 +163,6 @@ PSOResult findBestByCompromise(const std::vector<PSOResult>& results, double wei
         max_status = std::max(max_status, result.n_bad_status);
     }
     
-    // Avoid division by zero
     double time_range = (max_time - min_time > 1e-9) ? (max_time - min_time) : 1.0;
     double status_range = (max_status - min_status > 0) ? (max_status - min_status) : 1.0;
     
@@ -159,11 +170,9 @@ PSOResult findBestByCompromise(const std::vector<PSOResult>& results, double wei
     double best_score = std::numeric_limits<double>::max();
     
     for (const auto& result : results) {
-        // Normalize to [0, 1] range
         double normalized_time = (result.avg_time - min_time) / time_range;
         double normalized_status = static_cast<double>(result.n_bad_status - min_status) / status_range;
         
-        // Compute weighted score (lower is better)
         double score = (1.0 - weight) * normalized_status + weight * normalized_time;
         
         if (score < best_score) {
@@ -175,55 +184,134 @@ PSOResult findBestByCompromise(const std::vector<PSOResult>& results, double wei
     return best;
 }
 
+// Try to load parameter line from corresponding lhs file.
+// result_filename is expected like "pso_sto_tuning_3.csv" and will map to
+// "lhs_pso_params_samples_3.csv" inside lhs_dir.
+bool loadLHSParams(const std::string &lhs_dir, const std::string &result_filename,
+                   int row_number, std::vector<double> &out_params) {
+    std::regex idx_re(R"(_(\d+)\.csv$)", std::regex::icase);
+    std::smatch m;
+    if (!std::regex_search(result_filename, m, idx_re)) {
+        return false; // no index found
+    }
+    std::string idx = m[1];
+    fs::path lhs_path = fs::path(lhs_dir) / ("lhs_pso_params_samples_" + idx + ".csv");
+    if (!fs::exists(lhs_path)) return false;
+
+    std::ifstream f(lhs_path.string());
+    if (!f.is_open()) return false;
+
+    std::string line;
+    // skip header
+    if (!std::getline(f, line)) return false;
+
+    int cur = 0;
+    while (std::getline(f, line)) {
+        ++cur;
+        if (cur == row_number) {
+            std::stringstream ss(line);
+            std::string token;
+            while (std::getline(ss, token, ',')) {
+                // trim
+                token.erase(0, token.find_first_not_of(" \t\r\n"));
+                token.erase(token.find_last_not_of(" \t\r\n") + 1);
+                try { out_params.push_back(std::stod(token)); }
+                catch (...) { out_params.push_back(0.0); }
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 // Print result details
+// added lhs_dir parameter (default to pso_params output folder)
 void printResult(const std::string& label, const PSOResult& result, 
                  const std::string& method, int num_columns, 
-                 bool show_compromise_score = false, double weight = 0.5) {
+                 bool show_compromise_score = false, double weight = 0.5,
+                 const std::string& lhs_dir = "../output/pso_params/") {
     std::cout << label << ":\n";
+    std::cout << "  Source File: " << result.source_file << "\n";
     std::cout << "  Row Number: " << result.row_number << "\n";
-    
-    // Print parameters
+
+    // Try to load corresponding lhs params
+    std::vector<double> lhs_params;
+    bool lhs_ok = loadLHSParams(lhs_dir, result.source_file, result.row_number, lhs_params);
+
     std::cout << "  Parameters:\n";
-    std::cout << "    Particles: " << static_cast<int>(result.params[0]) << "\n";
-    std::cout << "    Iterations: " << static_cast<int>(result.params[1]) << "\n";
-    std::cout << "    w: " << result.params[2] << "\n";
-    std::cout << "    c1: " << result.params[3] << "\n";
-    std::cout << "    c2: " << result.params[4] << "\n";
-    std::cout << "    min_w: " << result.params[5] << "\n";
-    std::cout << "    min_c1: " << result.params[6] << "\n";
-    std::cout << "    min_c2: " << result.params[7] << "\n";
-    if (method == "STO") {
-        std::cout << "    alpha: " << result.params[8] << "\n";
-        std::cout << "    saturation: " << result.params[9] << "\n";
+    if (lhs_ok && !lhs_params.empty()) {
+        // Expect lhs_params layout: particles, iterations, w, c1, c2, min_w, min_c1, min_c2 [, alpha, saturation]
+        if (lhs_params.size() >= 8) {
+            std::cout << "    Particles: " << static_cast<int>(lhs_params[0]) << "\n";
+            std::cout << "    Iterations: " << static_cast<int>(lhs_params[1]) << "\n";
+            std::cout << "    w: " << lhs_params[2] << "\n";
+            std::cout << "    c1: " << lhs_params[3] << "\n";
+            std::cout << "    c2: " << lhs_params[4] << "\n";
+            std::cout << "    min_w: " << lhs_params[5] << "\n";
+            std::cout << "    min_c1: " << lhs_params[6] << "\n";
+            std::cout << "    min_c2: " << lhs_params[7] << "\n";
+        } else {
+            for (size_t i = 0; i < lhs_params.size(); ++i) {
+                std::cout << "    p" << i << ": " << lhs_params[i] << "\n";
+            }
+        }
+        if (method == "STO" && lhs_params.size() >= 10) {
+            std::cout << "    alpha: " << lhs_params[8] << "\n";
+            std::cout << "    saturation: " << lhs_params[9] << "\n";
+        }
+    } else {
+        // fallback to result.params already present in result file
+        if (!result.params.empty()) {
+            if (result.params.size() >= 8) {
+                std::cout << "    Particles: " << static_cast<int>(result.params[0]) << "\n";
+                std::cout << "    Iterations: " << static_cast<int>(result.params[1]) << "\n";
+                std::cout << "    w: " << result.params[2] << "\n";
+                std::cout << "    c1: " << result.params[3] << "\n";
+                std::cout << "    c2: " << result.params[4] << "\n";
+                std::cout << "    min_w: " << result.params[5] << "\n";
+                std::cout << "    min_c1: " << result.params[6] << "\n";
+                std::cout << "    min_c2: " << result.params[7] << "\n";
+            } else {
+                for (size_t i = 0; i < result.params.size(); ++i) {
+                    std::cout << "    p" << i << ": " << result.params[i] << "\n";
+                }
+            }
+            if (method == "STO" && result.params.size() >= 10) {
+                std::cout << "    alpha: " << result.params[8] << "\n";
+                std::cout << "    saturation: " << result.params[9] << "\n";
+            }
+        } else {
+            std::cout << "    (No parameter info available)\n";
+        }
     }
+
     std::cout << "  Average Time: " << std::fixed << std::setprecision(3) 
               << result.avg_time << " s\n";
     std::cout << "  Bad Status Count: " << result.n_bad_status << "\n";
     
     if (show_compromise_score) {
-        std::cout << "  Weighted Score: " << std::setprecision(3)
-                  << ((1.0 - weight) * result.n_bad_status + weight * result.avg_time * 10.0) << "\n";
+        double score = (1.0 - weight) * result.n_bad_status + weight * result.avg_time * 10.0;
+        std::cout << "  Weighted Score (status*(1-w) + 10*time*w): " << std::setprecision(3)
+                  << score << "\n";
     }
     
     std::cout << "\n";
 }
 
-// Parse weight parameter from command line
+// Parse weight parameter from command line (first argument)
 double parseWeight(int argc, char* argv[]) {
     double weight = 0.5;  // Default value
     
     if (argc > 1) {
         try {
             weight = std::stod(argv[1]);
-            
-            // Validate range [0, 1]
             if (weight < 0.0 || weight > 1.0) {
-                std::cerr << "Warning: Weight must be between 0.0 and 1.0. Using default value 0.5\n" << std::endl;
+                std::cerr << "Warning: Weight must be between 0.0 and 1.0. Using default value 0.5\n";
                 weight = 0.5;
             }
         }
-        catch (const std::exception& e) {
-            std::cerr << "Warning: Invalid weight parameter. Using default value 0.5\n" << std::endl;
+        catch (...) {
+            std::cerr << "Warning: Invalid weight parameter. Using default value 0.5\n";
             weight = 0.5;
         }
     }
@@ -234,64 +322,101 @@ double parseWeight(int argc, char* argv[]) {
 int main(int argc, char* argv[]) {
     std::string directory = "../output/pso_params/";
     
-    // Parse weight parameter
     double weight = parseWeight(argc, argv);
     
-    // Check if directory exists
     if (!fs::exists(directory)) {
         std::cerr << "Error: Directory " << directory << " does not exist" << std::endl;
         return 1;
     }
     
-    std::cout << "========================================" << std::endl;
-    std::cout << "PSO PARAMETER TUNING ANALYSIS" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << "Compromise Weight: " << std::fixed << std::setprecision(2) << weight << std::endl;
-    std::cout << "  (0.0 = prioritize success rate, 1.0 = prioritize computation time)" << std::endl;
-    std::cout << "========================================\n" << std::endl;
+    std::cout << "========================================\n";
+    std::cout << "PSO PARAMETER TUNING AGGREGATED ANALYSIS\n";
+    std::cout << "========================================\n";
+    std::cout << "Compromise Weight: " << std::fixed << std::setprecision(2) << weight << "\n";
+    std::cout << "  (0.0 = prioritize success rate, 1.0 = prioritize computation time)\n";
+    std::cout << "========================================\n\n";
     
-    // Iterate through all CSV files in the directory
+    // regex patterns to match files like pso_sto_tuning.csv or pso_sto_tuning_1.csv
+    std::regex sto_re(R"(pso_sto_tuning(_\d+)?\.csv)", std::regex::icase);
+    std::regex full_re(R"(pso_full_tuning(_\d+)?\.csv)", std::regex::icase);
+    
+    std::vector<PSOResult> all_sto_results;
+    std::vector<PSOResult> all_full_results;
+    int sto_num_columns = 0;
+    int full_num_columns = 0;
+    int sto_file_count = 1;
+    int full_file_count = 1;
+    
     for (const auto& entry : fs::directory_iterator(directory)) {
-        if (entry.path().extension() == ".csv") {
-            std::string filepath = entry.path().string();
-            std::string filename = entry.path().filename().string();
-            
-            int num_columns = 0;
-            std::vector<PSOResult> results = readCSV(filepath, num_columns);
-            
-            if (results.empty()) {
-                std::cerr << "Warning: No data found in " << filename << std::endl;
-                continue;
+        if (entry.path().extension() != ".csv") continue;
+        std::string filename = entry.path().filename().string();
+        
+        if (std::regex_match(filename, sto_re)) {
+            int num_cols = 0;
+            auto vec = readCSV(entry.path().string(), num_cols);
+            if (!vec.empty()) {
+                sto_file_count++;
+                if (sto_num_columns == 0) sto_num_columns = num_cols;
+                // append and keep source_file info set inside readCSV
+                all_sto_results.insert(all_sto_results.end(), vec.begin(), vec.end());
             }
-            
-            // Determine method based on number of columns
-            std::string method = (num_columns == 14) ? "STO" : "FULL";
-            
-            std::cout << "----------------------------------------" << std::endl;
-            std::cout << "File: " << filename << std::endl;
-            std::cout << "Method: " << method << std::endl;
-            std::cout << "Total Results: " << results.size() << std::endl;
-            std::cout << "----------------------------------------\n" << std::endl;
-            
-            // Find best by status
-            PSOResult bestByStatus = findBestByStatus(results);
-            printResult("Configuration with highest success rate", bestByStatus, method, num_columns);
-            
-            // Find best by compromise
-            PSOResult bestByCompromise = findBestByCompromise(results, weight);
-            printResult("Configuration with best compromise (weighted)", bestByCompromise, method, num_columns, true, weight);
-            
-            // Find best by time
-            PSOResult bestByTime = findBestByTime(results);
-            printResult("Configuration with lowest average computation time", bestByTime, method, num_columns);
-            
-            std::cout << std::endl;
+        } else if (std::regex_match(filename, full_re)) {
+            int num_cols = 0;
+            auto vec = readCSV(entry.path().string(), num_cols);
+            if (!vec.empty()) {
+                full_file_count++;
+                if (full_num_columns == 0) full_num_columns = num_cols;
+                all_full_results.insert(all_full_results.end(), vec.begin(), vec.end());
+            }
         }
     }
     
-    std::cout << "========================================" << std::endl;
-    std::cout << "ANALYSIS COMPLETE" << std::endl;
-    std::cout << "========================================" << std::endl;
+    // Process STO group if any
+    if (!all_sto_results.empty()) {
+        std::cout << "----------------------------------------\n";
+        std::cout << "AGGREGATED STO RESULTS (" << sto_file_count - 1 << " files, "
+                  << all_sto_results.size() << " total rows)\n";
+        std::cout << "----------------------------------------\n\n";
+        try {
+            PSOResult bestByStatus = findBestByStatus(all_sto_results);
+            printResult("Best (by n_bad_status) - STO aggregate", bestByStatus, "STO", sto_num_columns);
+            
+            PSOResult bestByCompromise = findBestByCompromise(all_sto_results, weight);
+            printResult("Best (by compromise) - STO aggregate", bestByCompromise, "STO", sto_num_columns, true, weight);
+            
+            PSOResult bestByTime = findBestByTime(all_sto_results);
+            printResult("Best (by avg_time) - STO aggregate", bestByTime, "STO", sto_num_columns);
+        } catch (const std::exception& e) {
+            std::cerr << "Error processing STO aggregated results: " << e.what() << "\n";
+        }
+    } else {
+        std::cout << "No STO tuning files found.\n";
+    }
     
+    // Process FULL group if any
+    if (!all_full_results.empty()) {
+        std::cout << "----------------------------------------\n";
+        std::cout << "AGGREGATED FULL RESULTS (" << full_file_count - 1 << " files, "
+                  << all_full_results.size() << " total rows)\n";
+        std::cout << "----------------------------------------\n\n";
+        try {
+            PSOResult bestByStatus = findBestByStatus(all_full_results);
+            printResult("Best (by n_bad_status) - FULL aggregate", bestByStatus, "FULL", full_num_columns);
+            
+            PSOResult bestByCompromise = findBestByCompromise(all_full_results, weight);
+            printResult("Best (by compromise) - FULL aggregate", bestByCompromise, "FULL", full_num_columns, true, weight);
+            
+            PSOResult bestByTime = findBestByTime(all_full_results);
+            printResult("Best (by avg_time) - FULL aggregate", bestByTime, "FULL", full_num_columns);
+        } catch (const std::exception& e) {
+            std::cerr << "Error processing FULL aggregated results: " << e.what() << "\n";
+        }
+    } else {
+        std::cout << "No FULL tuning files found.\n";
+    }
+    
+    std::cout << "========================================\n";
+    std::cout << "ANALYSIS COMPLETE\n";
+    std::cout << "========================================\n";
     return 0;
 }

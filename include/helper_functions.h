@@ -209,4 +209,13 @@ bool loadStateSamples(std::vector<std::vector<double>>& initial_states,
                       std::vector<std::vector<double>>& final_states,
                       const std::string& filename="../output/lhs_samples.csv");
 
+/**
+ * @brief Load PSO parameter samples from CSV file
+ * @param params_vector Output vector of parameter vectors
+ * @param filename Path to the CSV file containing PSO samples
+ * @return true if successful, false otherwise
+ */
+bool loadPSOSamples(std::vector<std::vector<double>>& params_vector,
+                    const std::string& filename);
+
 #endif /* HELPER_FUNCTIONS_H */

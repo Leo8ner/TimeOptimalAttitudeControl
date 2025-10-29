@@ -42,7 +42,7 @@ int main() {
     PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::STO, false, n_particles); // Create PSO optimizer instance
     initial_guess.setPSOParameters(n_iterations, inertia_weight, cognitive_coeff, social_coeff,
                                   decay_inertia, decay_cognitive, decay_social,
-                                  min_inertia, min_cognitive, min_social);  
+                                  min_inertia, min_cognitive, min_social, sigmoid_alpha, sigmoid_saturation);  
     Function solver = get_solver();
 
     // Open CSV file for logging results

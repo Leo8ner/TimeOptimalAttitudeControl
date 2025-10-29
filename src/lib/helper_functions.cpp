@@ -831,3 +831,60 @@ bool loadStateSamples(std::vector<std::vector<double>>& initial_states,
     std::cout << "Successfully loaded " << initial_states.size() << " samples from " << filename << std::endl;
     return true;
 }
+
+/**
+ * @brief Load PSO parameter samples from CSV file
+ * @param params_vector Output vector of parameter vectors
+ * @param filename Path to the CSV file containing PSO samples
+ * @return true if successful, false otherwise
+ */
+bool loadPSOSamples(std::vector<std::vector<double>>& params_vector,
+                      const std::string& filename) {
+    
+    std::ifstream csv_file(filename);
+    if (!csv_file.is_open()) {
+        std::cerr << "Error: Could not open " << filename << std::endl;
+        return false;
+    }
+
+    int n_cols = 10;
+
+    std::string line;
+    std::getline(csv_file, line); // Skip header
+
+    int line_count = 0;
+    while (std::getline(csv_file, line)) {
+        line_count++;
+        std::stringstream ss(line);
+        std::string value;
+        std::vector<double> params(n_cols);
+        
+        try {
+            for (int i = 0; i < n_cols; ++i) {
+                if (!std::getline(ss, value, ',')) {
+                    std::cerr << "Error: Incomplete PSO parameterdata at line " << line_count << std::endl;
+                    csv_file.close();
+                    return false;
+                }
+                params[i] = std::stod(value);
+            }
+
+            params_vector.push_back(params);
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error parsing line " << line_count << ": " << e.what() << std::endl;
+            csv_file.close();
+            return false;
+        }
+    }
+
+    csv_file.close();
+
+    if (params_vector.empty()) {
+        std::cerr << "Error: No valid samples loaded from " << filename << std::endl;
+        return false;
+    }
+
+    std::cout << "Successfully loaded " << params_vector.size() << " samples from " << filename << std::endl;
+    return true;
+}
