@@ -651,18 +651,18 @@ void PSOOptimizer::setPSOParameters(int max_iterations, double inertia_weight,
 
     handleCudaError(cudaEventRecord(start_event_), __FILE__, __LINE__);
 
-    max_iterations_ = max_iterations;
-    inertia_weight_ = static_cast<my_real>(inertia_weight);
-    cognitive_weight_ = static_cast<my_real>(cognitive_weight);
-    social_weight_ = static_cast<my_real>(social_weight);
+    if (max_iterations > 0) max_iterations_ = max_iterations;
+    if (inertia_weight >= 0) inertia_weight_ = static_cast<my_real>(inertia_weight);
+    if (cognitive_weight >= 0) cognitive_weight_ = static_cast<my_real>(cognitive_weight);
+    if (social_weight >= 0) social_weight_ = static_cast<my_real>(social_weight);
     decay_w_ = decay_inertia;   
     decay_c1_ = decay_cognitive;
     decay_c2_ = decay_social;
-    min_w_ = static_cast<my_real>(min_inertia);
-    min_c1_ = static_cast<my_real>(min_cognitive);
-    min_c2_ = static_cast<my_real>(min_social);
-    sigmoid_alpha_ = static_cast<my_real>(sigmoid_alpha);
-    sigmoid_saturation_ = static_cast<my_real>(sigmoid_saturation);
+    if (min_inertia >= 0 && min_inertia <= inertia_weight) min_w_ = static_cast<my_real>(min_inertia);
+    if (min_cognitive >= 0 && min_cognitive <= cognitive_weight) min_c1_ = static_cast<my_real>(min_cognitive);
+    if (min_social >= 0 && min_social <= social_weight) min_c2_ = static_cast<my_real>(min_social);
+    if (sigmoid_alpha > 0) sigmoid_alpha_ = static_cast<my_real>(sigmoid_alpha);
+    if (sigmoid_saturation >= 0.5 && sigmoid_saturation <= 1.0) sigmoid_saturation_ = static_cast<my_real>(sigmoid_saturation);
 
     copyImmutableConstants();
 

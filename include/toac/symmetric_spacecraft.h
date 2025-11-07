@@ -30,7 +30,7 @@ inline constexpr double i_z{1.0};              // Moment of inertia around z-axi
 
 // State limits
 inline constexpr double q_max{1.0};            // Maximum quaternion component----, -
-inline constexpr double q_min{-q_max};         // Minimum quaternion component----, - -
+inline constexpr double q_min{-q_max};         // Minimum quaternion component----, -
 inline constexpr double w_max{5.0};            // Maximum angular velocity--------, rad/s
 inline constexpr double w_min{-w_max};         // Minimum angular velocity--------, rad/s
 
@@ -39,5 +39,10 @@ inline constexpr double tau_max{1.0};          // Maximum torque----------------
 inline constexpr double tau_min{-tau_max};     // Minimum torque------------------, Nm
 inline constexpr double tau_dot_max{1.0};      // Maximum torque rate of change---, Nm/s
 
+// Initial and final states limits
+inline constexpr double max_angle{180.0 * DEG};      // Maximum initial angle-----------, rad
+inline constexpr double min_angle{-max_angle};       // Minimum initial angle-----------, rad
+inline constexpr double max_velocity{3.0 * DEG};     // Maximum initial angular velocity, rad/s
+inline constexpr double min_velocity{-max_velocity}; // Minimum initial angular velocity, rad/s
 
 #endif // SYMMETRICSPACERAFT_H

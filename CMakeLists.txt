@@ -379,6 +379,10 @@ add_executable(PSO_TUNER src/montecarlo/pso_tuner.cpp)
 target_link_libraries(PSO_TUNER PRIVATE ${CASADI_LIBRARIES} toac)
 target_include_directories(PSO_TUNER PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
+add_executable(pso_time src/montecarlo/pso_time.cpp)
+target_link_libraries(pso_time PRIVATE ${CASADI_LIBRARIES} toac)
+target_include_directories(pso_time PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
+
 add_executable(GetPSOparams src/montecarlo/pso_params.cpp)
 
 add_executable(GeneratePSOParamsSamples src/montecarlo/pso_sample_gen.cpp)

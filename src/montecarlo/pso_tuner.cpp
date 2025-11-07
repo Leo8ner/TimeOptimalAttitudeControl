@@ -10,53 +10,86 @@
 #include <string>
 #include <vector>
 #include <toac/lhs.h>
+#include <filesystem>
+#include <regex>
+#include <algorithm>
+
+namespace fs = std::filesystem;
 
 using namespace casadi;
 
 int main(int argc, char** argv) {
-    // PSO parameter tuning
+    int start_index = 0;
+    bool overwrite = false;
+    std::string select_method = "all"; // "sto", "full", or "all"
 
-    int file_index;
-    PSOMethod pso_method;
-    std::string method_string;
-
-    // Parse arguments:
-    // usage: prog [pso method] [file_index]
+    // Parse command line:
+    // ./pso_tuner [start_index=0] [overwrite=0] [method=all|sto|full]
     if (argc > 1) {
-        method_string = argv[1];
-        if (method_string == "sto") {
-            pso_method = PSOMethod::STO;
-        } else if (method_string == "full") {
-            pso_method = PSOMethod::FULL;
-        } else {
-            std::cerr << "Error: Unknown PSO method '" << method_string << "'. Use 'sto' or 'full'." << std::endl;
-            return 1;
+        start_index = std::atoi(argv[1]);
+        if (start_index < 0) {
+            std::cerr << "Warning: start_index must be non-negative. Using 0." << std::endl;
+            start_index = 0;
         }
     }
-
     if (argc > 2) {
-        file_index = std::atoi(argv[2]);
-        if (file_index <= 0) {
-            std::cerr << "Error: file_index must be a positive integer." << std::endl;
+        std::string ov = argv[2];
+        std::transform(ov.begin(), ov.end(), ov.begin(), ::tolower);
+        overwrite = (ov == "1" || ov == "true" || ov == "yes");
+    }
+    if (argc > 3) {
+        select_method = argv[3];
+        std::transform(select_method.begin(), select_method.end(), select_method.begin(), ::tolower);
+        if (select_method != "sto" && select_method != "full" && select_method != "all") {
+            std::cerr << "Warning: unknown method '" << argv[3] << "'. Using 'all'.\n";
             return 1;
         }
-    } else {
-        std::cout << "Correct usage: " << argv[0] << " [pso method (sto|full)] [file_index]\n";
+    }
+
+    std::string params_dir = "../output/pso_params/";
+    if (!fs::exists(params_dir)) {
+        std::cerr << "Error: directory " << params_dir << " does not exist\n";
         return 1;
     }
 
-    // Load PSO parameter samples from CSV
-    std::vector<std::vector<double>> pso_params;
-    std::string params_file = "../output/pso_params/lhs_pso_params_samples_" + std::to_string(file_index) + ".csv";
-    if (!loadPSOSamples(pso_params, params_file)) {
+    // discover files and their method/index
+    std::regex re(R"(lhs_pso_params_(sto|full)_samples_([0-9]+)\.csv)", std::regex::icase);
+    struct FileEntry { fs::path path; std::string method; int index; };
+    std::vector<FileEntry> entries;
+
+    for (const auto &entry : fs::directory_iterator(params_dir)) {
+        if (!entry.is_regular_file()) continue;
+        std::string fname = entry.path().filename().string();
+        std::smatch m;
+        if (std::regex_match(fname, m, re)) {
+            std::string method = m[1].str();
+            std::string idxs = m[2].str();
+            int idx = std::stoi(idxs);
+            std::transform(method.begin(), method.end(), method.begin(), ::tolower);
+            // respect select_method filter
+            if (select_method == "all" || select_method == method) {
+                entries.push_back({ entry.path(), method, idx });
+            }
+        }
+    }
+
+    if (entries.empty()) {
+        std::cerr << "Error: No parameter files matching lhs_pso_params_{sto|full}_samples_n.csv found in "
+                  << params_dir << " for method='" << select_method << "'\n";
         return 1;
     }
-    int tuning_iterations = pso_params.size();
 
-    // Load pre-generated quaternion samples from CSV
+    // sort by numeric index ascending
+    std::sort(entries.begin(), entries.end(), [](const FileEntry &a, const FileEntry &b){
+        return a.index < b.index;
+    });
+
+    std::cout << "Found " << entries.size() << " parameter files (method filter='" << select_method
+              << "'). Starting at index " << start_index << ". Overwrite: " << (overwrite ? "yes" : "no") << "\n";
+
+    // Load pre-generated quaternion samples (done once)
     std::vector<std::vector<double>> initial_states;
     std::vector<std::vector<double>> final_states;
-
     if (!loadStateSamples(initial_states, final_states, "../output/pso_params/lhs_pso_samples.csv")) {
         return 1;
     }
@@ -64,125 +97,191 @@ int main(int argc, char** argv) {
 
     Function solver = get_solver();
 
-    // Open CSV file for logging results
-    std::string output_file = "../output/pso_params/pso_" + method_string + "_tuning_" + std::to_string(file_index) + ".csv";
-    std::ofstream results_file(output_file);
-    if (!results_file.is_open()) {
-        std::cerr << "Error: Could not open results CSV file for writing" << std::endl;
-        return 1;
-    }
+    // Process each discovered file whose index >= start_index
+    for (const auto &fe : entries) {
+        if (fe.index < start_index) continue;
 
-    // Write header
-    results_file << "avg_time,avg_time_on_pso,avg_time_on_solver,n_bad_status\n";
-    results_file << std::fixed << std::setprecision(3);
+        std::string method_string = fe.method; // "sto" or "full"
+        PSOMethod pso_method;
+        if (method_string == "sto") pso_method = PSOMethod::STO;
+        else pso_method = PSOMethod::FULL;
 
-    // Progress tracking
-    auto total_start = std::chrono::high_resolution_clock::now();
-    int report_interval = std::max(1, tuning_iterations / 20); // Report every 5%
-    std::cout << "Starting optimization of " << tuning_iterations << " samples..." << std::endl;
-    int sample_count = 0;
-    for (const auto& sample : pso_params) {
-        int n_particles = static_cast<int>(sample[0]);
-        int n_iterations = static_cast<int>(sample[1]);
-        double inertia_weight = sample[2];
-        double cognitive_coeff = sample[3];
-        double social_coeff = sample[4];
-        double min_inertia = sample[5];
-        double min_cognitive = sample[6];
-        double min_social = sample[7];
-        double sigmoid_alpha = sample[8];
-        double sigmoid_saturation = sample[9];
-        bool decay_inertia = true;
-        bool decay_cognitive = true;
-        bool decay_social = true;
+        std::string params_file = fe.path.string();
+        std::string output_file = params_dir + "pso_" + method_string + "_tuning_" + std::to_string(fe.index) + ".csv";
 
-        DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
+        // Check if input file exists (should, since discovered) but be safe
+        if (!fs::exists(params_file)) {
+            std::cout << "Skipping index " << fe.index << ": parameter file not found: " << params_file << std::endl;
+            continue;
+        }
 
+        // Check if output file exists and is not empty
+        if (!overwrite && fs::exists(output_file)) {
+            std::ifstream check_file(output_file);
+            std::string first_line;
+            bool is_empty = !std::getline(check_file, first_line);
+            check_file.close();
+            if (!is_empty) {
+                std::cout << "Skipping index " << fe.index << ": output file exists and is not empty: "
+                          << output_file << std::endl;
+                continue;
+            }
+        }
 
-        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, pso_method, false, n_particles); // Create PSO optimizer instance
-        initial_guess.setPSOParameters(n_iterations, inertia_weight, cognitive_coeff, social_coeff,
-                                    decay_inertia, decay_cognitive, decay_social,
-                                    min_inertia, min_cognitive, min_social, sigmoid_alpha, sigmoid_saturation);  
+        std::cout << "\nProcessing parameter file " << fe.path.filename().string() << " (method=" << method_string
+                  << ", index=" << fe.index << ")\n";
 
+        // Load PSO parameter samples
+        std::vector<std::vector<double>> pso_params;
+        if (!loadPSOSamples(pso_params, params_file)) {
+            std::cout << "Error loading parameter file " << params_file << ", skipping" << std::endl;
+            continue;
+        }
+        int tuning_iterations = static_cast<int>(pso_params.size());
 
-        double total_time_accum = 0.0;
-        double pso_time_accum = 0.0;
-        double solver_time_accum = 0.0;
-        int n_bad_status = 0;
-        for (int i = 0; i < iterations; ++i) {
-            DM X_0 = DM::vertcat({
-            initial_states[i][0], initial_states[i][1], initial_states[i][2], initial_states[i][3],
-            initial_states[i][4], initial_states[i][5], initial_states[i][6]
-            });
-            DM X_f = DM::vertcat({
-            final_states[i][0], final_states[i][1], final_states[i][2], final_states[i][3],
-            final_states[i][4], final_states[i][5], final_states[i][6]
-            });
+        // Open output file
+        std::ofstream results_file(output_file);
+        if (!results_file.is_open()) {
+            std::cerr << "Error: Could not open results file for writing: " << output_file << std::endl;
+            continue;
+        }
 
-            // Start the timer
-            auto start = std::chrono::high_resolution_clock::now();
-            initial_guess.setStates(X_0->data(), X_f->data());
-            initial_guess.optimize(false);
-            auto end = std::chrono::high_resolution_clock::now();
-            double pso_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
-            
-            // Call the solver with parsed inputs
-            DMDict inputs = {{"X0", X_0}, {"Xf", X_f}, 
-                            {"X_guess", X_guess}, 
-                            {"U_guess", U_guess}, 
-                            {"dt_guess", dt_guess}};
+        // Write header
+        results_file << "avg_time,avg_time_on_pso,avg_time_on_solver,n_bad_status\n";
+        results_file << std::fixed << std::setprecision(3);
 
-            redirect_output_to_file("../output/solver_logs.log");
-            start = std::chrono::high_resolution_clock::now();
-            DMDict result = solver(inputs);
-            end = std::chrono::high_resolution_clock::now();
-            double solver_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+        // Progress tracking for this file
+        auto file_start = std::chrono::high_resolution_clock::now();
+        int report_interval = std::max(1, tuning_iterations / 20);
+        std::cout << "Starting optimization of " << tuning_iterations << " parameter sets..." << std::endl;
+        int sample_count = 1;
 
-            double total_time = pso_time + solver_time;
+        for (const auto& sample : pso_params) {
+            bool is_sto = (pso_method == PSOMethod::STO);
 
-            restore_output_to_console();
+            int n_particles = 0;
+            int n_iterations = 0;
+            double inertia_weight = 0.0;
+            double cognitive_coeff = 0.0;
+            double social_coeff = 0.0;
+            double min_inertia = 0.0;
+            double min_cognitive = 0.0;
+            double min_social = 0.0;
+            double sigmoid_alpha = 0.0;
+            double sigmoid_saturation = 0.0;
 
-            int solver_status = get_solver_status("../output/solver_logs.log");
-            if (solver_status < 0) {
-                n_bad_status++;
+            // safely extract columns (some files may omit alpha/saturation)
+            if (sample.size() >= 2) {
+                n_particles = static_cast<int>(sample[0]);
+                n_iterations = static_cast<int>(sample[1]);
+            }
+            if (sample.size() > 2) inertia_weight = sample[2];
+            if (sample.size() > 3) cognitive_coeff = sample[3];
+            if (sample.size() > 4) social_coeff = sample[4];
+            if (sample.size() > 5) min_inertia = sample[5];
+            if (sample.size() > 6) min_cognitive = sample[6];
+            if (sample.size() > 7) min_social = sample[7];
+            if (is_sto) {
+                if (sample.size() > 8) sigmoid_alpha = sample[8];
+                if (sample.size() > 9) sigmoid_saturation = sample[9];
             }
 
-            total_time_accum += total_time;
-            pso_time_accum += pso_time;
-            solver_time_accum += solver_time;
+            bool decay_inertia = true;
+            bool decay_cognitive = true;
+            bool decay_social = true;
 
+            // Prepare initial guesses (sizes used must match solver expectations)
+            DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1);
+
+            PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, pso_method, false, n_particles);
+            // pass alpha/saturation even for FULL (they'll be ignored by PSO implementation if unused)
+            initial_guess.setPSOParameters(n_iterations, inertia_weight, cognitive_coeff, social_coeff,
+                                        decay_inertia, decay_cognitive, decay_social,
+                                        min_inertia, min_cognitive, min_social, sigmoid_alpha, sigmoid_saturation);
+
+            double total_time_accum = 0.0;
+            double pso_time_accum = 0.0;
+            double solver_time_accum = 0.0;
+            int n_bad_status = 0;
+
+            for (int i = 0; i < iterations; ++i) {
+                DM X_0 = DM::vertcat({
+                    initial_states[i][0], initial_states[i][1], initial_states[i][2], initial_states[i][3],
+                    initial_states[i][4], initial_states[i][5], initial_states[i][6]
+                });
+                DM X_f = DM::vertcat({
+                    final_states[i][0], final_states[i][1], final_states[i][2], final_states[i][3],
+                    final_states[i][4], final_states[i][5], final_states[i][6]
+                });
+
+                // Start the timer
+                auto start = std::chrono::high_resolution_clock::now();
+                initial_guess.setStates(X_0->data(), X_f->data());
+                initial_guess.optimize(false);
+                auto end = std::chrono::high_resolution_clock::now();
+                double pso_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+
+                // Call the solver with parsed inputs
+                DMDict inputs = {{"X0", X_0}, {"Xf", X_f},
+                                {"X_guess", X_guess},
+                                {"U_guess", U_guess},
+                                {"dt_guess", dt_guess}};
+
+                redirect_output_to_file("../output/solver_logs.log");
+                start = std::chrono::high_resolution_clock::now();
+                DMDict result = solver(inputs);
+                end = std::chrono::high_resolution_clock::now();
+                double solver_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() / 1000.0;
+
+                double total_time = pso_time + solver_time;
+
+                restore_output_to_console();
+
+                int solver_status = get_solver_status("../output/solver_logs.log");
+                if (solver_status < 0) {
+                    n_bad_status++;
+                }
+
+                total_time_accum += total_time;
+                pso_time_accum += pso_time;
+                solver_time_accum += solver_time;
+            }
+
+            // Log results to CSV
+            results_file << (total_time_accum / iterations) << ","
+                         << (pso_time_accum / iterations) << ","
+                         << (solver_time_accum / iterations) << ","
+                         << n_bad_status << "\n";
+
+            // Progress report
+            if ((sample_count) % report_interval == 0 || (sample_count) == tuning_iterations) {
+                auto current_time = std::chrono::high_resolution_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - file_start).count();
+                double time_left = (static_cast<double>(elapsed) / (sample_count)) * (tuning_iterations - (sample_count));
+                double progress = 100.0 * (sample_count) / tuning_iterations;
+                int minutes = elapsed / 60;
+                int secs = elapsed % 60;
+                int mins_left = time_left / 60;
+                int secs_left = static_cast<int>(fmod(time_left, 60.0));
+                std::cout << "Progress: " << (sample_count) << "/" << tuning_iterations
+                          << " (" << std::fixed << std::setprecision(1) << progress << "%)" << std::endl
+                          << "Elapsed time: " << std::setprecision(1) << minutes << " min " << secs << " sec, "
+                          << "Estimated time left: " << std::setprecision(1) << mins_left << " min " << secs_left << " sec" << std::endl;
+            }
+            sample_count++;
         }
-        // Log results to CSV
-        results_file << (total_time_accum / iterations) << ","
-                     << (pso_time_accum / iterations) << ","
-                     << (solver_time_accum / iterations) << ","
-                     << n_bad_status << "\n";
 
-        // Progress report
-        if ((sample_count + 1) % report_interval == 0 || (sample_count + 1) == tuning_iterations) {
-            auto current_time = std::chrono::high_resolution_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(current_time - total_start).count();
-            double time_left = (static_cast<double>(elapsed) / (sample_count + 1)) * (tuning_iterations - (sample_count + 1));
-            double progress = 100.0 * (sample_count + 1) / tuning_iterations;
-            int minutes = elapsed / 60;
-            int secs = elapsed % 60;
-            int mins_left = time_left / 60;
-            int secs_left = fmod(time_left, 60);
-            std::cout << "Progress: " << (sample_count + 1) << "/" << tuning_iterations
-                    << " (" << std::fixed << std::setprecision(1) << progress << "%)" << std::endl
-                    << "Elapsed time: " << std::setprecision(1) << minutes << " min " << secs << " sec, "
-                    << "Estimated time left: " << std::setprecision(1) << mins_left << " min " << secs_left << " sec" << std::endl;
-        }
-        sample_count++;
+        results_file.close();
+        std::cout << "Results logged to " << output_file << std::endl;
 
-        }
+        auto file_end = std::chrono::high_resolution_clock::now();
+        auto file_elapsed = std::chrono::duration_cast<std::chrono::seconds>(file_end - file_start).count();
+        int minutes = file_elapsed / 60;
+        int secs = file_elapsed % 60;
+        std::cout << "File " << fe.index << " completed in " << minutes
+                  << " minutes and " << secs << " seconds" << std::endl;
+    }
 
-    results_file.close();
-    std::cout << "Results logged to " << output_file << std::endl;
-    auto total_end = std::chrono::high_resolution_clock::now();
-    auto total_elapsed = std::chrono::duration_cast<std::chrono::seconds>(total_end - total_start).count();
-    int minutes = total_elapsed / 60;
-    int secs = total_elapsed % 60;
-    std::cout << "Completed in " << minutes << " minutes and " << secs << " seconds" << std::endl;    
+    std::cout << "\nAll files processed." << std::endl;
     return 0;
 }

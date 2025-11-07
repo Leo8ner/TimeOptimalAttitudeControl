@@ -1,6 +1,7 @@
 #include <vector>
 #include <random>
 #include <algorithm>
+#include <stdexcept>
 
 class LHS {
 public:

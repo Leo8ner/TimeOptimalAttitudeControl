@@ -18,8 +18,8 @@ int main() {
     // Load pre-generated quaternion samples from CSV
     std::vector<std::vector<double>> initial_states;
     std::vector<std::vector<double>> final_states;
-    
-    if (!loadStateSamples(initial_states, final_states, "../output/lhs_samples.csv")) {
+
+    if (!loadStateSamples(initial_states, final_states, "../output/mcs/lhs_samples.csv")) {
         return 1;
     }
     int iterations = initial_states.size();

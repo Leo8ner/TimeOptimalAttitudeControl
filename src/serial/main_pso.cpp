@@ -24,16 +24,30 @@ int main(int argc, char* argv[]) {
         DM X_0, X_f, angles_0, angles_f;
         std::tie(X_0, X_f, angles_0, angles_f) = parseInput(argv[1], argv[2]);
 
+        // PSO parameters
+        int n_particles = 5120;       // Number of particles in swarm
+        int n_iterations = 150;       // Number of PSO iterations
+        double inertia_weight = 7.8;  // Inertia weight
+        double cognitive_coeff = 5.0; // Cognitive coefficient
+        double social_coeff = 7.0;    // Social coefficient
+        bool decay_inertia = true;    // Enable inertia weight decay
+        bool decay_cognitive = true;  // Enable cognitive coefficient decay
+        bool decay_social = true;     // Enable social coefficient decay
+        double min_inertia = 5.10;     // Minimum inertia weight
+        double min_cognitive = 2.3;   // Minimum cognitive coefficient
+        double min_social = 5.0;      // Minimum social coefficient
+        double sigmoid_alpha = 6.1;  // Sigmoid alpha for stochastic control sign
+        double sigmoid_saturation = 0.85; // Sigmoid saturation limit for control sign
+
         DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
 
-        auto prepare_pso = std::chrono::high_resolution_clock::now();
-        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::STO, true); // Create PSO optimizer instance
-        initial_guess.setStates(X_0->data(), X_f->data());
-        // double w = 5.0; // Inertia weight
-        // double c1 = 2.0; // Cognitive weight
-        // double c2 = 1.0; // Social weight
 
-        // initial_guess.setPSOParameters(100,w,c1,c2); // Set PSO parameters: iterations, particles, inertia, cognitive, social
+        auto prepare_pso = std::chrono::high_resolution_clock::now();
+        PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::STO, false, n_particles); // Create PSO optimizer instance
+        initial_guess.setPSOParameters(n_iterations, inertia_weight, cognitive_coeff, social_coeff,
+                                    decay_inertia, decay_cognitive, decay_social,
+                                    min_inertia, min_cognitive, min_social, sigmoid_alpha, sigmoid_saturation);  
+        initial_guess.setStates(X_0->data(), X_f->data());
         auto start_pso = std::chrono::high_resolution_clock::now();
         if(!initial_guess.optimize(true)) {
             std::cerr << "Error: PSO initial guess optimization failed." << std::endl;

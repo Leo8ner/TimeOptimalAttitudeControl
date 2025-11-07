@@ -862,10 +862,14 @@ bool loadPSOSamples(std::vector<std::vector<double>>& params_vector,
         try {
             for (int i = 0; i < n_cols; ++i) {
                 if (!std::getline(ss, value, ',')) {
-                    std::cerr << "Error: Incomplete PSO parameterdata at line " << line_count << std::endl;
-                    csv_file.close();
-                    return false;
-                }
+                    if (i == 8) {
+                        break;
+                    } else {
+                        std::cerr << "Error: Incomplete PSO parameter data at line " << line_count << std::endl;
+                        csv_file.close();
+                        return false;
+                    }
+                } 
                 params[i] = std::stod(value);
             }
 

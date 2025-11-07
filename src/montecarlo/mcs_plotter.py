@@ -137,7 +137,7 @@ def analyze_results(data):
                         break  # Stop checking other methods for this case
         
         for i in range(N):
-            if cgpops["time"][i] > 0.5:
+            if cgpops["time"][i] > 0.2:
                 not_real_time += 1
             if cgpops["status"][i] >= 0:
                 avg_time_success += cgpops["time"][i]
@@ -176,7 +176,7 @@ def analyze_results(data):
             T = data[col]["T"][i]
             T_cgpops = data["cgpops"]["T"][i] if "cgpops" in data else 0
             T_diff += T - T_cgpops
-            if data[col]["time"][i] > 0.5:
+            if data[col]["time"][i] > 0.2:
                 not_real_time += 1
 
             
@@ -348,7 +348,7 @@ def plot_data(results, save_name):
     not_rt_rates = [results[m]['not_real_time_rate'] for m in methods]
     bars3 = ax3.bar(range(len(methods)), not_rt_rates, color=[colors[m] for m in methods])
     ax3.set_ylabel('Not Real-Time Rate (%)', fontweight='bold')
-    ax3.set_title('Not Real-Time Rate (> 0.5s)')
+    ax3.set_title('Not Real-Time Rate (> 0.2s)')
     ax3.set_xticks(range(len(methods)))
     ax3.set_xticklabels([method_labels[m] for m in methods])
     ax3.set_ylim(0, max(not_rt_rates) * 1.2)
