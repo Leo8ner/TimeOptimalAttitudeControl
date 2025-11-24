@@ -161,11 +161,12 @@ add_library(toac STATIC
             src/lib/toac/optimizer.cpp 
             src/lib/toac/dynamics.cpp 
             src/lib/toac/cudaRK4.cu
+            #src/lib/toac/CUDAdynamics.cu
             src/lib/toac/CustomCallback.cpp
             src/lib/toac/CUDAoptimizer.cpp
+            #src/lib/toac/external_cvodes.cpp
             src/lib/toac/external_rk4.cpp
             src/lib/toac/pso.cu
-            #src/lib/toac/new_pso.cu
             src/lib/toac/lhs.cpp
             src/lib/helper_functions.cpp
 ) 
@@ -174,9 +175,11 @@ add_library(toac_shared SHARED
             src/lib/toac/optimizer.cpp 
             src/lib/toac/dynamics.cpp 
             src/lib/toac/cudaRK4.cu
+            #src/lib/toac/CUDAdynamics.cu
             src/lib/toac/CustomCallback.cpp
             src/lib/toac/CUDAoptimizer.cpp
             src/lib/toac/external_rk4.cpp
+            #src/lib/toac/external_cvodes.cpp
             src/lib/helper_functions.cpp
 ) 
 
@@ -454,7 +457,3 @@ add_custom_target(only_pso
 )
 
 
-# Add tests
-# add_executable(TestDyn src/parallel/test_code_gen.cpp)
-# target_link_libraries(TestDyn PRIVATE ${CASADI_LIBRARIES} toac)
-# target_include_directories(TestDyn PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)

@@ -50,30 +50,6 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
                 MX X_kp1 = F({x[k],u[k],delta_t[k]})[0];
                 opti.subject_to(x[k+1] == X_kp1);  // State at next time step
 
-            // } else if (method == "collocation") {
-            //     // Evaluate dynamics at start of interval
-            //     MX f_k = F(MXVector{x[k], u[k]})[0];
-                
-            //     // For endpoint dynamics, handle last interval specially
-            //     MX u_kp1;
-            //     if (k < n_stp - 1) {
-            //         u_kp1 = u[k+1];  // Use next control point
-            //     } else {
-            //         u_kp1 = u[k];    // Last interval: extrapolate (piecewise constant)
-            //     }
-            //     MX f_k1 = F(MXVector{x[k+1], u_kp1})[0];
-                
-            //     // Compute midpoint state and control
-            //     MX x_c = 0.5*(x[k] + x[k+1]) + delta_t[k]/8.0*(f_k - f_k1);
-            //     MX u_c = 0.5*(u[k] + u_kp1);
-                
-            //     // Evaluate dynamics at midpoint
-            //     MX f_c = F(MXVector{x_c, u_c})[0];
-                
-            //     // Simpson's rule defect constraint
-            //     MX defect = x[k+1] - x[k] - delta_t[k]/6.0*(f_k + 4*f_c + f_k1);
-            //     opti.subject_to(defect == 0);
-
             } else {
                 throw std::invalid_argument("Unsupported method: " + method);
             }
@@ -110,9 +86,6 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
         solver_opts = {
             {"print_level", 5},
             {"tol", 1e-7},              // Main tolerance
-            //{"constr_viol_tol", 1e-7}, // Constraint violation tolerance
-            //{"acceptable_tol", 1e-5},    // Acceptable tolerance
-            //{"mu_init", 1e-1},           // Larger initial barrier parameter
         };
 
         // Set the objective function
@@ -136,7 +109,6 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
         dt = opti.variable(n_stp);
         T = sum(dt);  // Total time        
 
-        // MX X_kp1 = F(MXDict{{"x0", X(all,Slice(0, n_stp))}, {"u", U}, {"p", dt}}).at("xf");
         if (method == "shooting") {
             MX X_kp1 = F({X(all,Slice(0, n_stp)), U, dt})[0];
             opti.subject_to(X(all,Slice(1, n_stp+1)) == X_kp1);
@@ -190,14 +162,11 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
         solver_opts = {
             {"print_level", 5},
             {"warm_start_init_point", "yes"},
-            {"max_iter", 1000},
-            //{"linear_solver", "ma57"},
+            //{"max_iter", 1000},
             {"mu_strategy", "adaptive"},
             {"tol", 1e-7},              // Main tolerance
-            //{"acceptable_tol", 1e-8},    // Acceptable tolerance
-            //{"constr_viol_tol", 1e-6}, // Constraint violation tolerance
-            //{"hessian_approximation", "limited-memory"}, // Use limited-memory approximation
-
+            //{"jacobian_approximation", "finite-difference-values"}, // Use sparse Jacobian approximation
+            {"hessian_approximation", "limited-memory"}, // Use limited-memory approximation
         };
 
         // Set the objective function
@@ -215,18 +184,3 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
         throw std::invalid_argument("Unsupported solver type: " + plugin);
     }
 }
-
-// void Optimizer::SetDynamicConstraints() {
-//     // This function can be used to set or update dynamic constraints if needed
-//     if (plugin != "fatrop" && method == "shooting") {
-//         // Implement shooting method constraints
-//     } else if (plugin == "fatrop" && method == "shooting") {
-//         MX X_kp1 = F({x[k],u[k],delta_t[k]})[0];
-//         opti.subject_to(x[k+1] == X_kp1);  // State at next time step
-//     } else if (plugin == "fatrop" && method == "collocation") {
-//         // Implement collocation constraints if needed
-//     } else if (plugin != "ipopt" && method == "collocation") {
-//         // Implement collocation constraints if needed
-//     } else {
-//         throw std::invalid_argument("Unsupported method: " + method);
-// }

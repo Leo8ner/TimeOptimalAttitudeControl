@@ -52,18 +52,16 @@ int main(int argc, char** argv) {
     std::cout << "Saving to: " << output_file << std::endl;
 
     try {
-        int dims = include_w ? 12 : 6;
+        int dims = include_w ? 9 : 3;
         LHS lhs(iterations, dims);
 
         double max_ang = max_angle; // rad
         double max_vel = max_vel;     // rad/s
 
         std::vector<double> mins = {
-                -max_ang, -max_ang, -max_ang,
                 -max_ang, -max_ang, -max_ang
             };
         std::vector<double> maxs = {
-                max_ang,  max_ang,  max_ang,
                 max_ang,  max_ang,  max_ang
             };
 
@@ -93,18 +91,36 @@ int main(int argc, char** argv) {
 
         // Write data
         for (int i = 0; i < iterations; ++i) {
-            std::vector<double> initial_state = {samples[i][0], samples[i][1], samples[i][2],
-                                 0, 0, 0};
-            std::vector<double> final_state   = {samples[i][3], samples[i][4], samples[i][5],
+            std::vector<double> initial_state = {0, 0, 0, 0, 0, 0};
+            std::vector<double> final_state   = {samples[i][0], samples[i][1], samples[i][2],
                                  0, 0, 0};
             if (include_w) {
+                // Normalize angular velocities to ensure total velocity is below max_vel
+                double norm_initial = 0.0;
+                double norm_final = 0.0;
                 for (int j = 0; j < 3; ++j) {
-                    initial_state[j+3] = samples[i][j+6];
-                    final_state[j+3] = samples[i][j+9];
+                    norm_initial += samples[i][j+3] * samples[i][j+3];
+                    norm_final += samples[i][j+6] * samples[i][j+6];
+                }
+                norm_initial = std::sqrt(norm_initial);
+                norm_final = std::sqrt(norm_final);
+                if (norm_initial > max_vel) {
+                    for (int j = 0; j < 3; ++j) {
+                        samples[i][j+3] = (samples[i][j+3] / norm_initial) * max_vel;
+                    }
+                }
+                if (norm_final > max_vel) {
+                    for (int j = 0; j < 3; ++j) {
+                        samples[i][j+6] = (samples[i][j+6] / norm_final) * max_vel;
+                    }
+                }
+                for (int j = 0; j < 3; ++j) {
+                    initial_state[j+3] = samples[i][j+3];
+                    final_state[j+3] = samples[i][j+6];
                 }
             }
             // Convert Euler angles to quaternions
-            DM q_initial = euler2quat(initial_state[0], initial_state[1], initial_state[2]);
+            DM q_initial = DM::vertcat({1,0,0,0}); // identity quaternion
             DM q_final   = euler2quat(final_state[0], final_state[1], final_state[2]);
             if (dot(q_initial, q_final).scalar() < 0) {
                 q_final = -q_final;

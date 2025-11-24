@@ -124,16 +124,6 @@ class SpacecraftAnimator:
             self.control_inputs[1] = np.insert(control_rows[1], 0, 0.0)  # uy
             self.control_inputs[2] = np.insert(control_rows[2], 0, 0.0)  # uz
         
-        # Debug output
-        # print(f"Debug: Parsed {len(state_rows)} state rows")
-        # print(f"Debug: Parsed {len(control_rows)} control rows")
-        # print(f"Debug: Euler angles: {len(self.euler_angles[0])} points")
-        # print(f"Debug: Quaternions: {len(self.quaternions[0])} points") 
-        # print(f"Debug: Angular rates: {len(self.angular_rates[0])} points")
-        # print(f"Debug: Control inputs: {len(self.control_inputs[0])} points") 
-        # print(f"Debug: Time points: {len(self.time_data)}")
-        # print(f"Debug: Total time: {self.total_time}")
-        
     def create_spacecraft_geometry(self):
         """Create spacecraft geometry based on inertia moments"""
         # Scale factors based on inertia ratios

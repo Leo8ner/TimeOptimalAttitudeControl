@@ -28,13 +28,6 @@
 #include <cgpops/cgpopsAuxExt.hpp>
 
 /**
- * @brief Parse Euler angles and angular velocities into quaternion state vector
- * @param input Comma-separated string with 6 values: roll,pitch,yaw,wx,wy,wz (degrees)
- * @return Tuple containing (state_vector, euler_angles) as DM objects
- */
-std::tuple<casadi::DM, casadi::DM> parseStateVector(const std::string& input);
-
-/**
  * @brief Extract initial guess from CSV trajectory file
  * @param csv_data Path to CSV file containing trajectory data
  * @param X_guess Output state trajectory matrix [7 x n_steps+1]
@@ -99,19 +92,32 @@ void exportTrajectory(casadi::DM& X, const casadi::DM& U, const casadi::DM& T, c
  * @brief Convert quaternion to Euler angles (ZYX convention)
  * @param current Current Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  * @param previous Previous Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
- * @param target Target Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  * @return Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  */
-double unwrapAngle(double current, double previous, double target);
+double unwrapAngle(double current, double previous);
 
 /**
  * @brief Convert quaternion to Euler angles (ZYX convention)
  * @param euler_prev Previous Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  * @param q Quaternion as DM object [4 x 1]
- * @param euler_target Target Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  * @return Euler angles [roll, pitch, yaw] in degrees as DM object [3 x 1]
  */
-casadi::DM quat2euler(const casadi::DM& euler_prev, const casadi::DM& q, const casadi::DM& euler_target);
+casadi::DM quat2euler(const casadi::DM& euler_prev, const casadi::DM& q);
+
+/**
+ * @brief Multiply two quaternions
+ * @param q1 First quaternion as DM object
+ * @param q2 Second quaternion as DM object
+ * @return Resulting quaternion as DM object
+ */
+casadi::DM quat_mul(const casadi::DM& q1, const casadi::DM& q2);
+
+/**
+ * @brief Conjugate of a quaternion
+ * @param q Input quaternion as DM object
+ * @return Conjugated quaternion as DM object
+ */
+casadi::DM quat_conj(const casadi::DM& q);
 
 /**
  * @brief Parse initial and final state vectors from command line arguments
@@ -163,6 +169,29 @@ std::vector<std::vector<double>> VparseStateVector(const std::string& initial_st
  * @return Quaternion as vector<double>
  */
 std::vector<double> Veuler2quat(const double& phi, const double& theta, const double& psi);
+
+/**
+ * @brief Multiply two quaternions
+ * @param q1 First quaternion as vector<double>
+ * @param q2 Second quaternion as vector<double>
+ * @return Resulting quaternion as vector<double>
+ */
+std::vector<double> Vquat_mul(const std::vector<double>& q1, const std::vector<double>& q2);
+
+/**
+ * @brief Compute the normalized quaternion
+ * @param q Input quaternion as vector<double>
+ * @return Normalized quaternion as vector<double>
+ */
+std::vector<double> normalize(const std::vector<double>& q);
+
+/**
+ * @brief Compute the dot product of two quaternions
+ * @param q1 First quaternion as vector<double>
+ * @param q2 Second quaternion as vector<double>
+ * @return Dot product (scalar)
+ */
+double dot(const std::vector<double>& q1, const std::vector<double>& q2);
 
 /**
  * @brief Parse MATLAB .mat file to extract state trajectory

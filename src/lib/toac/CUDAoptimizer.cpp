@@ -45,11 +45,11 @@ void Optimizer::setupOptimizationProblem()
 
         // Solver setup
         Dict plugin_opts{}, solver_opts{};
-        solver_opts["print_level"] = 3;
+        solver_opts["print_level"] = 5;
         // solver_opts["max_iter"] = 1000;
-        // solver_opts["tol"] = 1e-10;            // Main tolerance
+        solver_opts["tol"] = 1e-7;            // Main tolerance
         // solver_opts["acceptable_tol"] = 1e-6;  // Acceptable tolerance
-        // solver_opts["jacobian_approximation"] = "finite-difference-values"; // Use sparse Jacobian approximation
+        //solver_opts["jacobian_approximation"] = "finite-difference-values"; // Use sparse Jacobian approximation
         solver_opts["hessian_approximation"] = "limited-memory"; // Use limited-memory approximation
         plugin_opts["expand"] = true;
 

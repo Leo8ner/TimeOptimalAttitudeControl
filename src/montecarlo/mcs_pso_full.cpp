@@ -24,17 +24,17 @@ int main() {
     int iterations = initial_states.size();
 
     // PSO parameters
-    int n_particles = 640;        // Number of particles in swarm
-    int n_iterations = 200;       // Number of PSO iterations
-    double inertia_weight = 2.0;  // Inertia weight
-    double cognitive_coeff = 3.0; // Cognitive coefficient
-    double social_coeff = 1.0;    // Social coefficient
+    int n_particles = 3200;        // Number of particles in swarm
+    int n_iterations = 10;       // Number of PSO iterations
+    double inertia_weight = 3.5;  // Inertia weight
+    double cognitive_coeff = 4.8; // Cognitive coefficient
+    double social_coeff = 1.7;    // Social coefficient
     bool decay_inertia = true;    // Enable inertia weight decay
     bool decay_cognitive = true;  // Enable cognitive coefficient decay
     bool decay_social = true;     // Enable social coefficient decay
-    double min_inertia = 0.1;     // Minimum inertia weight
-    double min_cognitive = 0.5;   // Minimum cognitive coefficient
-    double min_social = 0.2;      // Minimum social coefficient
+    double min_inertia = 0.0;     // Minimum inertia weight
+    double min_cognitive = 1.5;   // Minimum cognitive coefficient
+    double min_social = 1.5;      // Minimum social coefficient
 
     DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
     PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::FULL, false, n_particles); // Create PSO optimizer instance

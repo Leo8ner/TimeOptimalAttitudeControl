@@ -1,4 +1,3 @@
-#include <toac/cuda_optimizer.h>
 #include <helper_functions.h>
 
 using namespace casadi;
@@ -12,9 +11,7 @@ int main(int argc, char* argv[]) {
     }
     
     try {
-        // Start the timer
-        // This is used to measure the time taken by the optimization process
-        auto start = std::chrono::high_resolution_clock::now();
+        int num_runs = 10;
 
         // Parse command line arguments
         DM X_0, X_f, angles_0, angles_f;
@@ -35,15 +32,25 @@ int main(int argc, char* argv[]) {
                          {"X_guess", X_guess}, 
                          {"U_guess", U_guess}, 
                          {"dt_guess", dt_guess}};
-        DMDict result = solver(inputs);
-        
-        // Stop the timer
-        auto end = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
-        std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
-        std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;
+        double total_time = 0.0;
+        double solution_time = 0.0;
+        DMDict result;
+        for (int i = 0; i < num_runs; ++i) {
+            auto start = std::chrono::high_resolution_clock::now();
+            result = solver(inputs);
 
-        processResults(result, angles_0, angles_f);
+            // Stop the timer
+            auto end = std::chrono::high_resolution_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
+            total_time += elapsed.count();
+            solution_time += result["T"].scalar();
+        }
+
+        std::cout << "Computation Time: " << total_time / num_runs << " s" << std::endl;
+
+        std::cout << "Maneuver duration: " << solution_time / num_runs << " s" << std::endl;
+
+        //processResults(result, angles_0, angles_f);
         
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

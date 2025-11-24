@@ -31,8 +31,6 @@ int main(){
     // generate dynamics in c code
     casadi::CodeGenerator myCodeGen = casadi::CodeGenerator("parsolver.c", opts);
     myCodeGen.add(opti.solver);
-    //myCodeGen.add(dyn.get_jacobian());
-    //myCodeGen.add(dyn.get_hessian());
     myCodeGen.generate(prefix_code);
     // compile c code to a shared library
     std::string prefix_lib = std::filesystem::current_path().parent_path().string() + "/build/";

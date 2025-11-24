@@ -1,0 +1,7 @@
+Rotation angle: 180 degrees
+Optimal solution: 3.2431
+Number of switches: 5
+Number of runs: 10
+Average computation time: 1559.01 s
+Average maneuver duration: 3.2434 s 
+Error: 0.0003 = 0.0093%

@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <regex>
 #include <algorithm>
+#include <cstdio>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -95,6 +97,43 @@ int main(int argc, char** argv) {
     }
     int iterations = initial_states.size();
 
+    // Load GPOPS results
+    std::vector<double> gpops_T;
+    std::vector<int> gpops_status;
+    {
+        std::ifstream gpops_file("../output/mcs/cgpops.csv");
+        if (!gpops_file.is_open()) {
+            std::cerr << "Error: Could not open GPOPS results file\n";
+            return 1;
+        }
+
+        std::string line;
+        // Skip header
+        std::getline(gpops_file, line);
+        
+        while (std::getline(gpops_file, line)) {
+            std::stringstream ss(line);
+            std::string token;
+            
+            // Read T
+            std::getline(ss, token, ',');
+            gpops_T.push_back(std::stod(token));
+            
+            // Skip time
+            std::getline(ss, token, ',');
+            
+            // Read status
+            std::getline(ss, token, ',');
+            gpops_status.push_back(std::stoi(token));
+        }
+    }
+
+    if (gpops_T.size() != initial_states.size()) {
+        std::cerr << "Warning: GPOPS results size (" << gpops_T.size() 
+                  << ") doesn't match states samples size (" << initial_states.size() << ")\n";
+        return 1;
+    }
+
     Function solver = get_solver();
 
     // Process each discovered file whose index >= start_index
@@ -115,22 +154,6 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        // Check if output file exists and is not empty
-        if (!overwrite && fs::exists(output_file)) {
-            std::ifstream check_file(output_file);
-            std::string first_line;
-            bool is_empty = !std::getline(check_file, first_line);
-            check_file.close();
-            if (!is_empty) {
-                std::cout << "Skipping index " << fe.index << ": output file exists and is not empty: "
-                          << output_file << std::endl;
-                continue;
-            }
-        }
-
-        std::cout << "\nProcessing parameter file " << fe.path.filename().string() << " (method=" << method_string
-                  << ", index=" << fe.index << ")\n";
-
         // Load PSO parameter samples
         std::vector<std::vector<double>> pso_params;
         if (!loadPSOSamples(pso_params, params_file)) {
@@ -139,24 +162,70 @@ int main(int argc, char** argv) {
         }
         int tuning_iterations = static_cast<int>(pso_params.size());
 
-        // Open output file
-        std::ofstream results_file(output_file);
-        if (!results_file.is_open()) {
+        // Determine how many rows are already written in output_file (excluding header)
+        int rows_written = 0;
+        bool output_exists = fs::exists(output_file);
+        if (output_exists && !overwrite) {
+            std::ifstream ofcheck(output_file);
+            if (ofcheck.is_open()) {
+                std::string line;
+                // Assume first line is header; read it
+                if (std::getline(ofcheck, line)) {
+                    // count remaining non-empty lines
+                    while (std::getline(ofcheck, line)) {
+                        if (!line.empty()) ++rows_written;
+                    }
+                }
+                ofcheck.close();
+            }
+        }
+
+        // If output already fully written, skip file
+        if (!overwrite && rows_written >= tuning_iterations && tuning_iterations > 0) {
+            std::cout << "Skipping index " << fe.index << ": output already complete (" << rows_written << "/" << tuning_iterations << ")\n";
+            continue;
+        }
+
+        // Open results file (use FILE* so we can fflush+fsync after every write)
+        FILE* results_fp = nullptr;
+        bool need_header = false;
+        if (overwrite) {
+            results_fp = std::fopen(output_file.c_str(), "w");
+            need_header = true;
+        } else {
+            if (!output_exists || fs::file_size(output_file) == 0) {
+                // create and write header
+                results_fp = std::fopen(output_file.c_str(), "w");
+                need_header = true;
+            } else {
+                // append to existing file
+                results_fp = std::fopen(output_file.c_str(), "a");
+                need_header = false;
+            }
+        }
+        if (!results_fp) {
             std::cerr << "Error: Could not open results file for writing: " << output_file << std::endl;
             continue;
         }
 
-        // Write header
-        results_file << "avg_time,avg_time_on_pso,avg_time_on_solver,n_bad_status\n";
-        results_file << std::fixed << std::setprecision(3);
+        // Write header if needed
+        if (need_header) {
+            std::fprintf(results_fp, "avg_time,avg_time_on_pso,avg_time_on_solver,n_bad_status,n_runs\n");
+            std::fflush(results_fp);
+            fsync(fileno(results_fp));
+        }
+
+        std::cout << "\nProcessing parameter file " << fe.path.filename().string() << " (method=" << method_string
+                  << ", index=" << fe.index << ")\n";
 
         // Progress tracking for this file
         auto file_start = std::chrono::high_resolution_clock::now();
         int report_interval = std::max(1, tuning_iterations / 20);
         std::cout << "Starting optimization of " << tuning_iterations << " parameter sets..." << std::endl;
-        int sample_count = 1;
+        int sample_count = rows_written +1;
 
-        for (const auto& sample : pso_params) {
+        for (int sample_idx = rows_written; sample_idx < tuning_iterations; ++sample_idx) {
+            const auto &sample = pso_params[sample_idx];
             bool is_sto = (pso_method == PSOMethod::STO);
 
             int n_particles = 0;
@@ -203,6 +272,9 @@ int main(int argc, char** argv) {
             double pso_time_accum = 0.0;
             double solver_time_accum = 0.0;
             int n_bad_status = 0;
+            double min_time = 0.2;
+            int min_bad_status = 100;
+            int n_runs = iterations;
 
             for (int i = 0; i < iterations; ++i) {
                 DM X_0 = DM::vertcat({
@@ -238,20 +310,36 @@ int main(int argc, char** argv) {
                 restore_output_to_console();
 
                 int solver_status = get_solver_status("../output/solver_logs.log");
-                if (solver_status < 0) {
+                if (solver_status < 0 && abs(result["T"].scalar() - gpops_T[i]) > 1e-1) {
                     n_bad_status++;
                 }
 
                 total_time_accum += total_time;
                 pso_time_accum += pso_time;
                 solver_time_accum += solver_time;
+                double min_total_time = (total_time_accum + (iterations - (i+1)) * pso_time_accum/(i+1))/iterations;
+
+                if ((min_total_time > min_time && n_bad_status > min_bad_status) || (n_bad_status > 100) || (min_total_time > 0.2)) {
+                    // early stopping
+                    n_runs = i + 1;
+                    break;
+                }
+
             }
 
-            // Log results to CSV
-            results_file << (total_time_accum / iterations) << ","
-                         << (pso_time_accum / iterations) << ","
-                         << (solver_time_accum / iterations) << ","
-                         << n_bad_status << "\n";
+            // Immediately write this sample's result to file (flush+fsync)
+            double avg_total = (total_time_accum / n_runs);
+            double avg_pso = (pso_time_accum / n_runs);
+            double avg_solver = (solver_time_accum / n_runs);
+
+            min_time = std::min(min_time, avg_total);
+            min_bad_status = std::min(min_bad_status, n_bad_status);
+
+            if (results_fp) {
+                std::fprintf(results_fp, "%.3f,%.3f,%.3f,%d,%d\n", avg_total, avg_pso, avg_solver, n_bad_status, n_runs);
+                std::fflush(results_fp);
+                fsync(fileno(results_fp));
+            }
 
             // Progress report
             if ((sample_count) % report_interval == 0 || (sample_count) == tuning_iterations) {
@@ -271,7 +359,8 @@ int main(int argc, char** argv) {
             sample_count++;
         }
 
-        results_file.close();
+
+        if (results_fp) std::fclose(results_fp);
         std::cout << "Results logged to " << output_file << std::endl;
 
         auto file_end = std::chrono::high_resolution_clock::now();

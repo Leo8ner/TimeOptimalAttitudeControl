@@ -12,14 +12,13 @@ using namespace casadi;
 int main(int argc, char* argv[]) {
     // Check command line arguments
     if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " \"phi_i,theta_i,psi_i,wx_i,wy_i,wz_i\" \"phi_f,theta_f,psi_f,wx_f,wy_f,wz_f\"" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " \"phi_i,theta_i,psi_i,wx_i,wy_i,wz_i\" \"phi_f,theta_f,psi_f,wx_f,wy_f,wz_f\" all in degrees" << std::endl;
         return 1;
     }
     
     try {
         
-        auto start = std::chrono::high_resolution_clock::now();
-
+        int num_runs = 1;
         // Parse command line arguments
         DM X_0, X_f, angles_0, angles_f;
         std::tie(X_0, X_f, angles_0, angles_f) = parseInput(argv[1], argv[2]);
@@ -37,14 +36,23 @@ int main(int argc, char* argv[]) {
                          {"X_guess", X_guess}, 
                          {"U_guess", U_guess}, 
                          {"dt_guess", dt_guess}};
-        DMDict result = solver(inputs);
+        double total_time = 0.0;
+        double solution_time = 0.0;
+        DMDict result;
+        for (int i = 0; i < num_runs; ++i) {
+            auto start = std::chrono::high_resolution_clock::now();
+            result = solver(inputs);
 
-        // Stop the timer
-        auto end = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
-        std::cout << "Computation Time: " << elapsed.count() << " s" << std::endl;
+            // Stop the timer
+            auto end = std::chrono::high_resolution_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start) / 1000.0;
+            total_time += elapsed.count();
+            solution_time += result["T"].scalar();
+        }
 
-        std::cout << "Maneuver duration: " << result["T"] << " s" << std::endl;
+        std::cout << "Computation Time: " << total_time / num_runs << " s" << std::endl;
+
+        std::cout << "Maneuver duration: " << solution_time / num_runs << " s" << std::endl;
 
         processResults(result, angles_0, angles_f);
         

@@ -83,10 +83,11 @@ int main() {
             int mins_left = time_left / 60;
             int secs_left = fmod(time_left, 60);
             std::cout << "Progress: " << (i + 1) << "/" << iterations
-                    << " (" << std::fixed << std::setprecision(1) << progress << "%)" << std::endl
-                    << "Elapsed time: " << std::setprecision(1) << mins << " min " << secs << " sec, "
+                    << " (" << std::fixed << std::setprecision(1) << progress << "%)"
+                    << " | Elapsed time: " << std::setprecision(1) << mins << " min " << secs << " sec, "
                     << "Estimated time left: " << std::setprecision(1) << mins_left << " min " << secs_left << " sec" << std::endl;
         }
+        std::cout<<".";
 
     }
 

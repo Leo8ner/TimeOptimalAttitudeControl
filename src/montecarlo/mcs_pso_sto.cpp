@@ -24,19 +24,19 @@ int main() {
     int iterations = initial_states.size();
 
     // PSO parameters
-    int n_particles = 5120;       // Number of particles in swarm
-    int n_iterations = 150;       // Number of PSO iterations
-    double inertia_weight = 7.8;  // Inertia weight
-    double cognitive_coeff = 5.0; // Cognitive coefficient
-    double social_coeff = 7.0;    // Social coefficient
+    int n_particles = 3200;       // Number of particles in swarm
+    int n_iterations = 100;       // Number of PSO iterations
+    double inertia_weight = 5.6;  // Inertia weight
+    double cognitive_coeff = 4.8; // Cognitive coefficient
+    double social_coeff = 6.0;    // Social coefficient
     bool decay_inertia = true;    // Enable inertia weight decay
     bool decay_cognitive = true;  // Enable cognitive coefficient decay
     bool decay_social = true;     // Enable social coefficient decay
-    double min_inertia = 5.10;     // Minimum inertia weight
-    double min_cognitive = 2.3;   // Minimum cognitive coefficient
-    double min_social = 5.0;      // Minimum social coefficient
-    double sigmoid_alpha = 6.1;  // Sigmoid alpha for stochastic control sign
-    double sigmoid_saturation = 0.85; // Sigmoid saturation limit for control sign
+    double min_inertia = 3.2;     // Minimum inertia weight
+    double min_cognitive = 1.7;   // Minimum cognitive coefficient
+    double min_social = 6.0;      // Minimum social coefficient
+    double sigmoid_alpha = 7.9;  // Sigmoid alpha for stochastic control sign
+    double sigmoid_saturation = 0.57; // Sigmoid saturation limit for control sign
 
     DM X_guess(n_states, (n_stp + 1)), U_guess(n_controls, n_stp), dt_guess(n_stp, 1); // Initial guesses for states, controls, and time steps
     PSOOptimizer initial_guess(X_guess, U_guess, dt_guess, PSOMethod::STO, false, n_particles); // Create PSO optimizer instance

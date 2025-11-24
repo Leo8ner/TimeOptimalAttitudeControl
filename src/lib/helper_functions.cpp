@@ -20,8 +20,8 @@ DM euler2quat(const double& phi, const double& theta, const double& psi) {
     return q;
 }
 
-// Converts quaternion to Euler (XYZ convention assumed here)
-DM quat2euler(const DM& euler_prev, const DM& q, const DM& euler_target) {
+// Converts quaternion to Euler (ZYX convention assumed here)
+DM quat2euler(const DM& euler_prev, const DM& q) {
     double q0 = q(0).scalar();
     double q1 = q(1).scalar();
     double q2 = q(2).scalar();
@@ -31,42 +31,86 @@ DM quat2euler(const DM& euler_prev, const DM& q, const DM& euler_target) {
     double theta_prev = euler_prev(1).scalar();
     double psi_prev   = euler_prev(2).scalar();
 
-    double phi_target   = euler_target(0).scalar();
-    double theta_target = euler_target(1).scalar();
-    double psi_target   = euler_target(2).scalar();
-
-    double phi, theta, psi;
-
-    // Compute sin(theta) for singularity detection
-    double sin_theta = 2 * (q0*q2 - q3*q1);
+    // clamp sin_theta for numerical safety
+    double sin_theta = 2.0 * (q0*q2 - q3*q1);
     sin_theta = std::max(-1.0, std::min(1.0, sin_theta));
+    double theta = std::asin(sin_theta);
 
-    const double singularity_threshold = 1 - 1e-6; // Threshold to detect gimbal lock
+    const double SINGULARITY_EPS = 1e-6;
+    double phi=0.0, psi=0.0;
 
-    if (std::abs(sin_theta) > singularity_threshold) {
-        // Near gimbal lock
-        theta = std::asin(sin_theta);
+    // Regular case: compute directly
+    if (std::abs(std::abs(sin_theta) - 1.0) > SINGULARITY_EPS) {
+        phi = atan2(2.0*(q0*q1 + q2*q3), 1.0 - 2.0*(q1*q1 + q2*q2));
+        psi = atan2(2.0*(q0*q3 + q1*q2), 1.0 - 2.0*(q2*q2 + q3*q3));
 
-        psi = psi_prev; // Retain previous yaw
-        phi = phi_prev; // Retain previous roll
+        // Try small ±2π shifts for phi and psi to best match previous+target (continuity)
+        auto choose_best = [&](double angle, double prev)->double {
+            double best = angle;
+            double best_cost = std::abs(unwrapAngle(angle, prev) - prev);
+            for (int k = -1; k <= 1; ++k) {
+                double cand = angle + k * 2.0 * M_PI;
+                double cand_unwrapped = unwrapAngle(cand, prev);
+                double cost = std::abs(cand_unwrapped - prev);
+                if (cost < best_cost) {
+                    best_cost = cost; best = cand;
+                }
+            }
+            return best;
+        };
 
+        phi = choose_best(phi, phi_prev);
+        psi = choose_best(psi, psi_prev);
     } else {
-        // Standard case
-        phi   = atan2(2*(q0*q1 + q2*q3), 1 - 2*(q1*q1 + q2*q2));
-        theta = std::asin(sin_theta);
-        psi   = atan2(2*(q0*q3 + q1*q2), 1 - 2*(q2*q2 + q3*q3));
+        // Near gimbal lock: theta ~ ±pi/2. phi and psi are coupled.
+        // Compute combined angle S ≈ phi + psi (depends on convention). Use numerically stable form:
+        double S = atan2(2.0*(q1*q2 + q0*q3), 1.0 - 2.0*(q2*q2 + q3*q3));
+
+        // Two natural candidates: fix phi to previous and derive psi, or fix psi to previous and derive phi.
+        double phi_a = phi_prev;
+        double psi_a = S - phi_a;
+        double cost_a = std::abs(unwrapAngle(phi_a, phi_prev) - phi_prev)
+                      + std::abs(unwrapAngle(psi_a, psi_prev) - psi_prev);
+
+        double psi_b = psi_prev;
+        double phi_b = S - psi_b;
+        double cost_b = std::abs(unwrapAngle(phi_b, phi_prev) - phi_prev)
+                      + std::abs(unwrapAngle(psi_b, psi_prev) - psi_prev);
+
+        if (cost_a <= cost_b) {
+            phi = phi_a;
+            psi = psi_a;
+        } else {
+            phi = phi_b;
+            psi = psi_b;
+        }
+
+        // Finally, nudge phi/psi by ±2π if that reduces jump from previous
+        auto normalize_candidate = [&](double &a, double prev){
+            double best = a;
+            double best_cost = std::abs(unwrapAngle(a, prev) - prev);
+            for (int k=-1;k<=1;++k){
+                double cand = a + k*2.0*M_PI;
+                double cand_unwrapped = unwrapAngle(cand, prev);
+                double cost = std::abs(cand_unwrapped - prev);
+                if (cost < best_cost) { best_cost = cost; best = cand; }
+            }
+            a = best;
+        };
+        normalize_candidate(phi, phi_prev);
+        normalize_candidate(psi, psi_prev);
     }
 
-    // Apply continuity + target bias
-    phi   = unwrapAngle(phi,   phi_prev,   phi_target);
-    theta = unwrapAngle(theta, theta_prev, theta_target);
-    psi   = unwrapAngle(psi,   psi_prev,   psi_target);
+    // Apply continuity + target bias using existing unwrap helper
+    phi   = unwrapAngle(phi,   phi_prev);
+    theta = unwrapAngle(theta, theta_prev);
+    psi   = unwrapAngle(psi,   psi_prev);
 
     return DM::vertcat({phi, theta, psi});
 }
 
 // Helper function to unwrap angle
-double unwrapAngle(double current, double previous, double target) {
+double unwrapAngle(double current, double previous) {
     double diff = current - previous;
 
     // Step 1: Basic unwrap around previous
@@ -79,24 +123,7 @@ double unwrapAngle(double current, double previous, double target) {
         diff = current - previous;
     }
 
-    // Step 2: Bias toward target
-    double best_angle = current;
-    // double best_dist = std::abs(best_angle - target);
-
-    // // Check alternative branches (±2π)
-    // double alt1 = current + 2.0 * M_PI;
-    // double alt2 = current - 2.0 * M_PI;
-
-    // if (std::abs(alt1 - target) < best_dist) {
-    //     best_angle = alt1;
-    //     best_dist = std::abs(best_angle - target);
-    // }
-    // if (std::abs(alt2 - target) < best_dist) {
-    //     best_angle = alt2;
-    //     best_dist = std::abs(best_angle - target);
-    // }
-
-    return best_angle;
+    return current;
 }
 
 // Skew-symmetric matrix
@@ -125,50 +152,6 @@ Function get_solver() {
 
         // use this function
         return external("solver", lib_full_name);
-}
-
-// Add this helper function before main()
-std::tuple<DM, DM> parseStateVector(const std::string& input) {
-    std::vector<double> values;
-    std::istringstream stream(input);
-    std::string token;
-    
-    while (std::getline(stream, token, ',')) {
-        values.push_back(std::stod(token));
-    }
-    
-    if (values.size() != 6) {
-        throw std::invalid_argument("State vector must have exactly 6 elements");
-    }
-    
-    double normalized_angles[3];
-    for (int i = 0; i < 3; ++i) {
-        // Normalize angle to (-180, 180]
-        double angle = fmod(values[i], 360.0);
-        if (angle <= -180.0) {
-            angle += 360.0; // Ensure non-negative
-        } else if (angle > 180.0) {
-            angle -= 360.0; // Ensure within (-180, 180]
-        }
-        normalized_angles[i] = angle;
-
-    }
-
-    DM angles_deg = DM::vertcat({normalized_angles[0], normalized_angles[1], normalized_angles[2]});
-
-
-    DM quat = euler2quat(normalized_angles[0] * DEG, normalized_angles[1] * DEG, normalized_angles[2] * DEG);
-    DM omega = DM::vertcat({values[3] * DEG, values[4] * DEG, values[5] * DEG});
-
-    DM state = DM::vertcat({quat, omega});
-
-    for (int i = 0; i < n_states; ++i) {
-        if (abs(state(i).scalar()) < 1e-6) {
-            state(i) = 0.0;  // Clean up near-zero values
-        }
-    }
-
-    return  std::make_tuple(state, angles_deg);
 }
 
 void extractInitialGuess(const std::string& csv_data, DM& X_guess, DM& U_guess, DM& dt_guess) {
@@ -248,17 +231,6 @@ void processResults(DMDict& results, const DM& angles_0, const DM& angles_f) {
         DM T = results["T"];
         DM dt = results["dt"];
         
-        // // Print results (rest unchanged)
-        // double T_opt = 0.0;
-        // if (angles_0(0).scalar() == 90.0) {
-        //     T_opt = 2.42112;
-        // } else if (angles_0(0).scalar() == 180.0){
-        //     T_opt = 3.2430;
-        // }
-        
-        // std::cout << "Computed Maneuver Duration: " << T << " s" << std::endl;
-        // std::cout << "Theoretical Optimal Duration: " << T_opt << std::endl;
-
         // Export and plot (unchanged)
         exportTrajectory(X, U, T, dt, angles_0, angles_f, "trajectory.csv");
         std::system("python3 ../src/lib/toac/plot_csv_data.py trajectory.csv");
@@ -272,10 +244,16 @@ void processResults(DMDict& results, const DM& angles_0, const DM& angles_f) {
 void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const DM& angles_0, const DM& angles_f, const std::string& filename) {
 
     DM euler_traj = DM::zeros(3, X.columns());
-    euler_traj(Slice(), 0) = angles_0 * DEG; // Initial angles in radians
+    euler_traj(Slice(), 0) = angles_0; // Initial angles in radians
+
+    // Compute initial quaternion in the inertial frame from provided initial Euler angles
+    DM quat_i = euler2quat(angles_0(0).scalar(), angles_0(1).scalar(), angles_0(2).scalar());
+    X(Slice(0, 4), 0) = quat_i;
     // Convert quaternion trajectory to Euler angles for output
     for (int i = 1; i < X.columns(); ++i) {
-        euler_traj(Slice(), i) = quat2euler(euler_traj(Slice(), i-1), X(Slice(0, 4), i), angles_f * DEG);
+        DM q_inertial = quat_mul(quat_i, X(Slice(0,4), i));            // compose to get inertial quaternion
+        X(Slice(0,4), i) = q_inertial;                             // store inertial quaternion
+        euler_traj(Slice(), i) = quat2euler(euler_traj(Slice(), i-1), q_inertial);
     }
     std::ofstream file("../output/" + filename);
 
@@ -335,10 +313,26 @@ void exportTrajectory(DM& X, const DM& U, const DM& T, const DM& dt, const DM& a
 }
 
 double normalizeAngle(double angle) {
-    angle = fmod(angle + 180.0, 360.0);
+    angle = fmod(angle + PI, 2.0 * PI);
     if (angle < 0)
-        angle += 360.0;
-    return angle - 180.0;
+        angle += 2.0 * PI;
+    return angle - PI;
+}
+
+// Quaternion multiply (q = q1 ⊗ q2), quaternions as DM(4) with scalar-first
+DM quat_mul(const DM &a, const DM &b) {
+    double a0 = a(0).scalar(), a1 = a(1).scalar(), a2 = a(2).scalar(), a3 = a(3).scalar();
+    double b0 = b(0).scalar(), b1 = b(1).scalar(), b2 = b(2).scalar(), b3 = b(3).scalar();
+    double r0 = a0*b0 - a1*b1 - a2*b2 - a3*b3;
+    double r1 = a0*b1 + a1*b0 + a2*b3 - a3*b2;
+    double r2 = a0*b2 - a1*b3 + a2*b0 + a3*b1;
+    double r3 = a0*b3 + a1*b2 - a2*b1 + a3*b0;
+    DM r = DM::vertcat({r0, r1, r2, r3});
+    return r / norm_2(r);
+}
+
+DM quat_conj(const DM &q) {
+    return DM::vertcat({ q(0), -q(1), -q(2), -q(3) });
 }
 
 // Add this helper function before main()
@@ -360,27 +354,31 @@ std::tuple<DM, DM, DM, DM> parseInput(const std::string& initial_state, const st
         throw std::invalid_argument("State vector must have exactly 6 elements");
     }
 
-    double normalized_angles_0[3], normalized_angles_f[3];
+    double norm_angles_0[3], norm_angles_f[3];
     for (int i = 0; i < 3; ++i) {
-        normalized_angles_0[i] = normalizeAngle(initial_values[i]);
-        normalized_angles_f[i] = normalizeAngle(final_values[i]);
+        norm_angles_0[i] = normalizeAngle(initial_values[i] * DEG);
+        norm_angles_f[i] = normalizeAngle(final_values[i] * DEG);
     }
 
-    DM angles_0 = DM::vertcat({normalized_angles_0[0], normalized_angles_0[1], normalized_angles_0[2]});
-    DM angles_f = DM::vertcat({normalized_angles_f[0], normalized_angles_f[1], normalized_angles_f[2]});
+    DM angles_0 = DM::vertcat({norm_angles_0[0], norm_angles_0[1], norm_angles_0[2]});
+    DM angles_f = DM::vertcat({norm_angles_f[0], norm_angles_f[1], norm_angles_f[2]});
 
-    DM quat_i = euler2quat(initial_values[0] * DEG, initial_values[1] * DEG, initial_values[2] * DEG);
+    DM quat_i = euler2quat(norm_angles_0[0], norm_angles_0[1], norm_angles_0[2]);
     DM omega_i = DM::vertcat({initial_values[3] * DEG, initial_values[4] * DEG, initial_values[5] * DEG});
 
-    DM quat_f = euler2quat(final_values[0] * DEG, final_values[1] * DEG, final_values[2] * DEG);
+    DM quat_f = euler2quat(norm_angles_f[0], norm_angles_f[1], norm_angles_f[2]);
     DM omega_f = DM::vertcat({final_values[3] * DEG, final_values[4] * DEG, final_values[5] * DEG});
 
-    if (dot(quat_i, quat_f).scalar() < 0) {
-        quat_f = -quat_f;
+    DM q_rel_f = quat_mul(quat_conj(quat_i), quat_f);   // new final quaternion
+    DM q_rel_i = DM::vertcat({1.0, 0.0, 0.0, 0.0}); // identity quaternion
+    
+    
+    if (dot(q_rel_i, q_rel_f).scalar() < 0) {
+        q_rel_f = -q_rel_f;
     }
 
-    DM X_0 = DM::vertcat({quat_i, omega_i});
-    DM X_f = DM::vertcat({quat_f, omega_f});
+    DM X_0 = DM::vertcat({q_rel_i, omega_i});
+    DM X_f = DM::vertcat({q_rel_f, omega_f});
 
     for (int i = 0; i < n_states; ++i) {
         if (abs(X_0(i).scalar()) < 1e-6) {
@@ -523,15 +521,7 @@ vector<double> Veuler2quat(const double& phi, const double& theta, const double&
     vector<double> q{q0, q1, q2, q3};
     
     // Normalize quaternion
-    double sum = 0.0;
-    for (double val : q) {
-        sum += val * val;
-    }
-    double norm = sqrt(sum);
-
-    for (double& val : q) {
-        val /= norm;
-    }
+    q = normalize(q);
     
     // Ensure scalar part is non-negative
     if (q[0] < 0) {
@@ -568,11 +558,19 @@ vector<vector<double>> VparseStateVector(const string& initial_state, const stri
         values_0[2] * DEG
     );
 
+    vector<double> q_ref = quat_0;
+    q_ref[1] = -q_ref[1];
+    q_ref[2] = -q_ref[2];
+    q_ref[3] = -q_ref[3];
+
     vector<double> quat_f = Veuler2quat(
         values_f[0] * DEG, 
         values_f[1] * DEG, 
         values_f[2] * DEG
     );
+
+    quat_f = Vquat_mul(q_ref, quat_f);
+    quat_0 = {1.0, 0.0, 0.0, 0.0}; // identity quaternion
 
     if (dot(quat_0, quat_f) < 0) {
         for (double& q : quat_f) {
@@ -611,6 +609,31 @@ vector<vector<double>> VparseStateVector(const string& initial_state, const stri
     }
 
     return {state_0, state_f};
+}
+
+vector<double> normalize(const vector<double>& v) {
+    double sum = 0.0;
+    for (double val : v) {
+        sum += val * val;
+    }
+    sum = sqrt(sum);
+    vector<double> normalized;
+    for (double val : v) {
+        normalized.push_back(val / sum);
+    }
+    return normalized;
+}
+
+// Quaternion multiply (q = q1 ⊗ q2), quaternions as DM(4) with scalar-first
+vector<double> Vquat_mul(const vector<double> &a, const vector<double> &b) {
+    double a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
+    double b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
+    double r0 = a0*b0 - a1*b1 - a2*b2 - a3*b3;
+    double r1 = a0*b1 + a1*b0 + a2*b3 - a3*b2;
+    double r2 = a0*b2 - a1*b3 + a2*b0 + a3*b1;
+    double r3 = a0*b3 + a1*b2 - a2*b1 + a3*b0;
+    vector<double> r{r0, r1, r2, r3};
+    return normalize(r);
 }
 
 void parseMatlab(
