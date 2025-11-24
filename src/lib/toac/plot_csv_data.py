@@ -35,6 +35,8 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
+FONTSIZE = 14
+
 
 def load_custom_csv(path: str | Path) -> dict[str, list[list[float]]]:
     """
@@ -110,11 +112,12 @@ def main(csv_path: str | Path) -> None:
     plt.plot(time, X[0], label=r"$\phi$")
     plt.plot(time, X[1], label=r"$\theta$")
     plt.plot(time, X[2], label=r"$\psi$")
-    plt.xlabel("Time  [s]")
-    plt.ylabel("Euler Angles [deg]")
+    plt.xlabel("Time  [s]", fontsize=FONTSIZE)
+    plt.ylabel("Euler Angles [deg]", fontsize=FONTSIZE)
     plt.title("Attitude with time")
+    plt.tick_params(axis='both', labelsize=FONTSIZE)
     plt.grid(True)
-    plt.legend()
+    plt.legend(fontsize=FONTSIZE)
     plt.savefig("../output/euler_angles.pdf" , format='pdf', dpi=600, bbox_inches='tight')
 
     plt.figure()
@@ -122,11 +125,12 @@ def main(csv_path: str | Path) -> None:
     plt.plot(time, X[4], label=r"$q_1$")
     plt.plot(time, X[5], label=r"$q_2$")
     plt.plot(time, X[6], label=r"$q_3$")
-    plt.xlabel("Time  [s]")
-    plt.ylabel("Quaternions [-]")
+    plt.xlabel("Time  [s]", fontsize=FONTSIZE)
+    plt.ylabel("Quaternions [-]", fontsize=FONTSIZE)
     plt.title("Quaternions with time")
+    plt.tick_params(axis='both', labelsize=FONTSIZE)
     plt.grid(True)
-    plt.legend()
+    plt.legend(fontsize=FONTSIZE)
     plt.savefig("../output/quaternions.pdf" , format='pdf', dpi=600, bbox_inches='tight')
 
 
@@ -134,11 +138,12 @@ def main(csv_path: str | Path) -> None:
     plt.plot(time, X[7]*180/np.pi, label=r'$\omega_x$')
     plt.plot(time, X[8]*180/np.pi, label=r"$\omega_y$")
     plt.plot(time, X[9]*180/np.pi, label=r"$\omega_z$")
-    plt.xlabel("Time  [s]")
-    plt.ylabel("Angular Rates [deg/s]")
+    plt.xlabel("Time  [s]", fontsize=FONTSIZE)
+    plt.ylabel("Angular Rates [deg/s]", fontsize=FONTSIZE)
     plt.title("Angular rates with time")
+    plt.tick_params(axis='both', labelsize=FONTSIZE)
     plt.grid(True)
-    plt.legend()
+    plt.legend(fontsize=FONTSIZE)
     plt.savefig("../output/angular_rates.pdf" , format='pdf', dpi=600, bbox_inches='tight')
 
 
@@ -148,11 +153,12 @@ def main(csv_path: str | Path) -> None:
     plt.plot(time, np.insert(U[0], 0, 0), label=r"$\tau_x$")
     plt.plot(time, np.insert(U[1], 0, 0), label=r"$\tau_y$")
     plt.plot(time, np.insert(U[2], 0, 0), label=r"$\tau_z$")
-    plt.xlabel("Time  [s]")
-    plt.ylabel("Torque [Nm]")
+    plt.xlabel("Time  [s]", fontsize=FONTSIZE)
+    plt.ylabel("Torque [Nm]", fontsize=FONTSIZE)
     plt.title("Control Inputs")
+    plt.tick_params(axis='both', labelsize=FONTSIZE)
     plt.grid(True)
-    plt.legend()
+    plt.legend(fontsize=FONTSIZE)
     plt.savefig("../output/control_inputs.pdf" , format='pdf', dpi=600, bbox_inches='tight')
 
     print("Plotting done. Check the output directory for results.")

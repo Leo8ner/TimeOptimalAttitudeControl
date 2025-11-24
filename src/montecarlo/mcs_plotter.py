@@ -100,7 +100,7 @@ def analyze_results(data):
         dict: Dictionary containing analysis results
     """
     # Check if required methods exist
-    methods = ['cgpops', 'no_pso', 'pso_full', 'pso_sto']
+    methods = ['cgpops', 'no_pso', 'pso_full', 'pso_sto', 'cgpops_1']
     available_methods = [m for m in methods if m in data]
     
     if not available_methods:
@@ -110,7 +110,27 @@ def analyze_results(data):
     
     results = {}
     
-    # Extract cgpops data
+    # Build an "optimal" solution per sample: choose the smallest T among available methods
+    if available_methods:
+        # N is defined above as number of samples
+        optimal = {
+            'T': data['cgpops']["T"] if 'cgpops' in data else np.full(N, np.inf),
+            'status': data['cgpops']["status"] if 'cgpops' in data else np.full(N, -1),
+        }
+
+        for m in available_methods:
+            if m == 'cgpops':
+                continue  # already initialized with cgpops data
+            Tm = data[m]["T"]
+            stm = data[m]["status"]
+            for i in range(N):
+                # only consider valid solutions
+                if stm[i] >= 0:
+                    if Tm[i] < optimal['T'][i] or optimal['status'][i] < 0:
+                        optimal['T'][i] = Tm[i]
+                        optimal['status'][i] = int(stm[i])
+     
+     # Extract cgpops data
     if 'cgpops' in data:
         cgpops = data["cgpops"]
         cgpops["avg_time"] = np.mean(cgpops["time"])
@@ -118,24 +138,6 @@ def analyze_results(data):
         n_success = 0
         not_real_time = 0
 
-        # Loop to check fake failed cgpops cases against other methods
-        other_methods = available_methods[1:]  # Remove cgpops from methods
-        
-        for i in range(N):
-            # Only process if cgpops failed (negative status)
-            if cgpops["status"][i] < 0:
-                cgpops_T = cgpops["T"][i]
-                
-                # Check against all other available methods
-                for method in other_methods:
-                    method_T = data[method]["T"][i]
-                    method_status = data[method]["status"][i]
-                    
-                    # If T values are equal and the other method succeeded
-                    if abs(cgpops_T - method_T) < 0.1 and method_status >= 0:
-                        cgpops["status"][i] = 2
-                        break  # Stop checking other methods for this case
-        
         for i in range(N):
             if cgpops["time"][i] > 0.2:
                 not_real_time += 1
@@ -143,6 +145,36 @@ def analyze_results(data):
                 avg_time_success += cgpops["time"][i]
                 n_success += 1
         
+        cgpops["avg_time_success"] = avg_time_success / n_success if n_success > 0 else np.nan
+        cgpops["success_rate"] = n_success / N * 100
+        cgpops["not_real_time_rate"] = not_real_time / N * 100
+        
+        results['cgpops'] = {
+            'avg_time': cgpops["avg_time"],
+            'avg_time_success': cgpops["avg_time_success"],
+            'success_rate': cgpops["success_rate"],
+            'not_real_time_rate': cgpops["not_real_time_rate"],
+            'n_success': n_success
+        }
+    if 'cgpops_1' in data:
+        # Handle case where cgpops data has duplicate columns
+        cgpops_1 = data["cgpops_1"]
+        avg_time_success = 0
+        n_success = 0
+        not_real_time = 0
+
+        for i in range(N):
+            if cgpops["T"][i] > cgpops_1["T"][i] and cgpops_1["status"][i] >= 0:
+                 cgpops["T"][i] = cgpops_1["T"][i]
+                 cgpops["status"][i] = cgpops_1["status"][i]
+                 cgpops["time"][i] = cgpops_1["time"][i]
+            if cgpops["status"][i] >= 0:
+                 avg_time_success += cgpops_1["time"][i]
+                 n_success += 1
+            if cgpops["time"][i] > 0.2:
+                not_real_time += 1
+
+        cgpops["avg_time"] = np.mean(cgpops["time"])
         cgpops["avg_time_success"] = avg_time_success / n_success if n_success > 0 else np.nan
         cgpops["success_rate"] = n_success / N * 100
         cgpops["not_real_time_rate"] = not_real_time / N * 100
@@ -174,26 +206,24 @@ def analyze_results(data):
         
         for i in range(N):
             T = data[col]["T"][i]
-            T_cgpops = data["cgpops"]["T"][i] if "cgpops" in data else 0
-            T_diff += T - T_cgpops
+            T_opt = optimal["T"][i]
+            T_diff += T - T_opt
             if data[col]["time"][i] > 0.2:
                 not_real_time += 1
 
-            
-
-            if abs(T - T_cgpops) < 0.1 and (data["cgpops"]["status"][i] >= 0) and (data[col]["status"][i] < 0):
+            if abs(T - T_opt)/T_opt*100 < 1 and (optimal["status"][i] >= 0) and (data[col]["status"][i] < 0):
                 data[col]["status"][i] = 2  # Mark as fake failed case
 
             if data[col]["status"][i] >= 0:
                 time_success += data[col]["time"][i]
-                T_diff_success += T - T_cgpops
+                T_diff_success += abs(T - T_opt)/T_opt*100
                 n_success += 1
             
             if col in ['pso_full', 'pso_sto'] and 'no_pso' in data:
-                T_diff_pso += data[col]["T"][i] - data["no_pso"]["T"][i]
+                T_diff_pso += (data[col]["T"][i] - data["no_pso"]["T"][i])/data["no_pso"]["T"][i] * 100
                 time_diff += data[col]["time"][i] - data["no_pso"]["time"][i]
                 if data[col]["status"][i] >= 0:
-                    T_diff_pso_success += data[col]["T"][i] - data["no_pso"]["T"][i]
+                    T_diff_pso_success += (data[col]["T"][i] - data["no_pso"]["T"][i])/data["no_pso"]["T"][i] * 100
                     time_diff_success += data[col]["time"][i] - data["no_pso"]["time"][i]
 
         data[col]["success_rate"] = n_success / N * 100

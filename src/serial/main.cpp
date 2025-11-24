@@ -51,8 +51,8 @@ int main(int argc, char* argv[]) {
         // auto total_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - prepare_pso) / 1000.0;
 
 
-        std::string plugin = "fatrop"; // Specify the solver plugin to use
-        std::string method = "shooting"; // Specify the integration method to use
+        std::string plugin = "ipopt"; // Specify the solver plugin to use
+        std::string method = "collocation"; // Specify the integration method to use
         bool fixed_step = true; // Use fixed step size for the integrator
 
         // Dynamics

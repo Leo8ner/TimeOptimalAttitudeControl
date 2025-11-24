@@ -11,7 +11,7 @@ int main(int argc, char* argv[]) {
     }
     
     try {
-        int num_runs = 10;
+        int num_runs = 1;
 
         // Parse command line arguments
         DM X_0, X_f, angles_0, angles_f;

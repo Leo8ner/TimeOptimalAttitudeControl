@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
     // ./prog <iterations> <include_w> <output_file>    (include_w: 1/0,true/false)
     if (argc < 2 || argc > 4) {
         std::cerr << "Usage: " << argv[0] << " <iterations> <include_w> <output_file>\n";
-        std::cerr << "  include_w: 1/0 or true/false (default=0)\n";
+        std::cerr << "  include_w: 1/0 or true/false yes/no (default=0)\n";
         std::cerr << "Example: " << argv[0] << " 1000 0 lhs_samples.csv\n";
         return 1;
     } else {
@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
         LHS lhs(iterations, dims);
 
         double max_ang = max_angle; // rad
-        double max_vel = max_vel;     // rad/s
+        double max_vel = max_velocity;     // rad/s
 
         std::vector<double> mins = {
                 -max_ang, -max_ang, -max_ang
