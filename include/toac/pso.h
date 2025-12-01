@@ -59,10 +59,10 @@
  *============================================================================*/
 
 /** @brief Maximum PSO iterations for optimization convergence */
-#define ITERATIONS 200
+#define ITERATIONS 500
 
 /** @brief Total number of particles in swarm (should be a multiple of GPU cores (640 in my case)) */
-#define N_PARTICLES 3200
+#define N_PARTICLES 5120
 
 /** @brief CUDA threads per block (must be multiple of 32, ≤ 1024) */
 #define ThreadsPerBlock 128

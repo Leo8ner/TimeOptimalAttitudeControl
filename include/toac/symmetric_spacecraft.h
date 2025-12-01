@@ -37,7 +37,6 @@ inline constexpr double w_min{-w_max};         // Minimum angular velocity------
 // Actuator limits
 inline constexpr double tau_max{1.0};          // Maximum torque------------------, Nm
 inline constexpr double tau_min{-tau_max};     // Minimum torque------------------, Nm
-inline constexpr double tau_dot_max{1.0};      // Maximum torque rate of change---, Nm/s
 
 // Initial and final states limits
 inline constexpr double max_angle{180.0 * DEG};      // Maximum initial angle-----------, rad

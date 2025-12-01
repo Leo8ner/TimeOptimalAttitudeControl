@@ -106,9 +106,10 @@ namespace DefaultValues {
  * @param tolerance Allowable deviation from unit norm
  * @return true if ||q|| ≈ 1 within tolerance, false otherwise
  */
-bool isQuaternionValid(const std::vector<double>& q, double tolerance = 1e-6) {
+bool isQuaternionValid(const std::vector<double>& q, double tolerance = 1e-4) {
     if (q.size() < 4) return false;
     double norm_sq = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
+
     return std::abs(norm_sq - 1.0) < tolerance;
 }
 
@@ -272,8 +273,23 @@ void cgpops_go(doubleMat& cgpopsResults,
             "State vectors must have 7 components: [q0, q1, q2, q3, wx, wy, wz]"
         );
     }
+
     
-    if (!isQuaternionValid(initial_state) || !isQuaternionValid(final_state)) {
+    std::vector<double> q_init = {
+        initial_state[StateIndex::Q0],
+        initial_state[StateIndex::Q1],
+        initial_state[StateIndex::Q2],
+        initial_state[StateIndex::Q3]
+    };
+
+    std::vector<double> q_final = {
+        final_state[StateIndex::Q0],
+        final_state[StateIndex::Q1],
+        final_state[StateIndex::Q2],
+        final_state[StateIndex::Q3]
+    };
+
+    if (!isQuaternionValid(q_init) || !isQuaternionValid(q_final)) {
         throw std::invalid_argument(
             "Quaternion components must be normalized: ||q|| = 1"
         );

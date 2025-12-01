@@ -232,7 +232,7 @@ bool loadLHSParams(const std::string &lhs_dir, const std::string &result_filenam
 // Print result details
 // added lhs_dir parameter (default to pso_params output folder)
 void printResult(const std::string& label, const PSOResult& result, 
-                 const std::string& method, int num_columns, 
+                 const std::string& method, 
                  bool show_compromise_score = false, double weight = 0.5,
                  const std::string& lhs_dir = "../output/pso_params/") {
     std::cout << label << ":\n";
@@ -384,13 +384,13 @@ int main(int argc, char* argv[]) {
         std::cout << "----------------------------------------\n\n";
         try {
             PSOResult bestByStatus = findBestByStatus(all_sto_results);
-            printResult("Best (by n_bad_status) - sto aggregate", bestByStatus, "sto", sto_num_columns);
+            printResult("Best (by n_bad_status) - sto aggregate", bestByStatus, "sto");
             
             PSOResult bestByCompromise = findBestByCompromise(all_sto_results, weight);
-            printResult("Best (by compromise) - sto aggregate", bestByCompromise, "sto", sto_num_columns, true, weight);
+            printResult("Best (by compromise) - sto aggregate", bestByCompromise, "sto", true, weight);
             
             PSOResult bestByTime = findBestByTime(all_sto_results);
-            printResult("Best (by avg_time) - sto aggregate", bestByTime, "sto", sto_num_columns);
+            printResult("Best (by avg_time) - sto aggregate", bestByTime, "sto");
         } catch (const std::exception& e) {
             std::cerr << "Error processing sto aggregated results: " << e.what() << "\n";
         }
@@ -406,13 +406,13 @@ int main(int argc, char* argv[]) {
         std::cout << "----------------------------------------\n\n";
         try {
             PSOResult bestByStatus = findBestByStatus(all_full_results);
-            printResult("Best (by n_bad_status) - full aggregate", bestByStatus, "full", full_num_columns);
+            printResult("Best (by n_bad_status) - full aggregate", bestByStatus, "full");
             
             PSOResult bestByCompromise = findBestByCompromise(all_full_results, weight);
-            printResult("Best (by compromise) - full aggregate", bestByCompromise, "full", full_num_columns, true, weight);
+            printResult("Best (by compromise) - full aggregate", bestByCompromise, "full", true, weight);
             
             PSOResult bestByTime = findBestByTime(all_full_results);
-            printResult("Best (by avg_time) - full aggregate", bestByTime, "full", full_num_columns);
+            printResult("Best (by avg_time) - full aggregate", bestByTime, "full");
         } catch (const std::exception& e) {
             std::cerr << "Error processing full aggregated results: " << e.what() << "\n";
         }

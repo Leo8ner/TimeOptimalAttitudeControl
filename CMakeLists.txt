@@ -187,7 +187,6 @@ add_library(toac_shared SHARED
 add_library(cgpops STATIC 
     src/lib/cgpops/cgpops_main.cpp
     src/lib/cgpops/cgpops_gov.cpp
-    src/lib/helper_functions.cpp
     ${CGPOPS_EXT_SOURCES}
 )
 
@@ -243,6 +242,7 @@ target_link_libraries(toac_shared PUBLIC
 
 target_link_libraries(cgpops PUBLIC
     ${IPOPT_PKG_LIBRARIES}
+    toac                              
 )
 
 target_link_directories(cgpops PUBLIC
@@ -253,6 +253,7 @@ target_link_directories(cgpops PUBLIC
 target_compile_options(cgpops PRIVATE
     -O3 -pipe
     -Wno-unknown-pragmas
+    -Wno-unused-result
     -Wno-long-long
     -Wno-unused-parameter
     -Wno-maybe-uninitialized
@@ -332,6 +333,11 @@ add_executable(PSOwithSerial src/serial/main_pso.cpp)
 target_link_libraries(PSOwithSerial PRIVATE ${CASADI_LIBRARIES} toac CUDA::cudart CUDA::curand) 
 target_include_directories(PSOwithSerial PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
+add_executable(PSO src/serial/pso_only.cpp)
+
+# Link the executable to the libraries
+target_link_libraries(PSO PRIVATE ${CASADI_LIBRARIES} toac CUDA::cudart CUDA::curand) 
+target_include_directories(PSO PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac)
 
 # Uncomment and fix the parallel version when needed
 add_executable(ParGenerateCode src/parallel/c_code_gen.cpp)
@@ -365,6 +371,10 @@ target_include_directories(GenerateSamples PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE
 add_executable(MCS_CGPOPS src/montecarlo/mcs_cgpops.cpp)
 target_link_libraries(MCS_CGPOPS PRIVATE ${CASADI_LIBRARIES} cgpops toac)
 target_include_directories(MCS_CGPOPS PRIVATE ${CASADI_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/toac ${CMAKE_SOURCE_DIR}/include/cgpops)
+target_compile_options(MCS_CGPOPS PRIVATE
+    -Wno-ignored-qualifiers
+    -Wno-deprecated-declarations
+)
 
 add_executable(MCS_NO_PSO src/montecarlo/mcs_no_pso.cpp)
 target_link_libraries(MCS_NO_PSO PRIVATE ${CASADI_LIBRARIES} toac)

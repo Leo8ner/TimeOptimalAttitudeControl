@@ -56,8 +56,6 @@ int main(int argc, char* argv[]) {
         auto elapsed_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_pso) / 1000.0;
         auto total_pso = std::chrono::duration_cast<std::chrono::milliseconds>(end - prepare_pso) / 1000.0;
 
-        // DMDict PSOresults = {{"X", X_guess}, {"U", U_guess}, {"T", sum(dt_guess)}, {"dt", dt_guess}};
-        // processResults(PSOresults, angles_0, angles_f);
 
         Function solver = get_solver();
         
