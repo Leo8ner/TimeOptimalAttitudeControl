@@ -38,5 +38,5 @@
 # Folders
 build/
 code_gen/
-output/
+tests/
 .vscode/

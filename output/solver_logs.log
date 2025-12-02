@@ -1,0 +1,181 @@
+
+---------------------------------------------------------------------------------------
+|                                                                                     |
+|                                                                                     |
+|                       ______ ______ ____   ____   ____  _____                       |
+|                      / ____// ____// __ \ / __ \ / __ \/ ___/                       |
+|                     / /    / / __ / /_/ // / / // /_/ /\_  \                        |
+|                    / /___ / /_/ // ____// /_/ // ____/___/ /                        |
+|                    \____/ \____//_/     \____//_/    /____/                         |
+|                                                                                     |
+| CGPOPS Version 21.0                                                                 |
+|                                                                                     |
+---------------------------------------------------------------------------------------
+|                                                                                     |
+| Authored by Yunus M. Agamawi & Anil V. Rao                                          |
+| Vehicle Dynamics & Optimization Laboratory                                          |
+|                                                                                     |
+---------------------------------------------------------------------------------------
+Derivative Supplier: Bicomplex-step
+
+Using option file "../input/ipoptOPTIONS.txt".
+
+
+
+*** Initialization Successful!
+This is Ipopt version 3.14.18, running with linear solver MUMPS 5.8.0.
+
+Number of nonzeros in equality constraint Jacobian...:    27782
+Number of nonzeros in inequality constraint Jacobian.:        1
+Number of nonzeros in Lagrangian Hessian.............:     8674
+
+Total number of variables............................:     2994
+                     variables with only lower bounds:        0
+                variables with lower and upper bounds:     2994
+                     variables with only upper bounds:        0
+Total number of equality constraints.................:     2400
+Total number of inequality constraints...............:        1
+        inequality constraints with only lower bounds:        0
+   inequality constraints with lower and upper bounds:        1
+        inequality constraints with only upper bounds:        0
+
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+   0  2.4000000e+00 1.44e-01 6.00e+00   0.0 0.00e+00    -  0.00e+00 0.00e+00   0
+   1  5.9640001e+00 1.27e-01 2.24e+02   0.8 3.08e+01    -  8.79e-02 1.16e-01f  1
+   2  5.9996401e+00 1.25e-01 4.44e+02   0.4 3.30e+00    -  9.90e-01 1.08e-02h  1
+   3  5.9862787e+00 5.01e-02 2.87e+02   0.4 1.16e+00    -  9.93e-01 5.57e-01h  1
+   4  5.9858423e+00 1.07e-03 1.20e+02   0.0 3.54e-01    -  9.99e-01 9.81e-01h  1
+   5  5.9853639e+00 2.81e-05 3.55e+00  -1.3 2.18e-02    -  9.97e-01 9.96e-01h  1
+   6  5.9731992e+00 3.71e-03 2.00e+00  -1.8 1.48e-01    -  1.00e+00 1.00e+00f  1
+   7  5.0044613e+00 1.29e-02 1.75e+01  -1.9 9.69e-01    -  1.00e+00 1.00e+00f  1
+   8  4.5487692e+00 7.01e-04 5.00e+00  -2.3 4.56e-01    -  1.00e+00 1.00e+00h  1
+   9  4.2320460e+00 3.50e-04 5.15e+00  -2.6 3.17e-01    -  1.00e+00 1.00e+00h  1
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+  10  4.2146165e+00 2.65e-03 1.09e+03  -2.3 7.68e-01    -  1.00e+00 5.85e-01h  1
+  11  3.8943248e+00 1.76e-03 1.49e+02  -2.6 3.73e-01    -  1.00e+00 8.67e-01h  1
+  12  3.6007544e+00 5.97e-04 1.13e+01  -2.8 4.12e-01    -  1.00e+00 1.00e+00h  1
+  13  3.4183714e+00 5.62e-05 1.64e+00  -3.4 1.82e-01    -  1.00e+00 1.00e+00h  1
+  14  3.3369895e+00 1.09e-03 5.00e+02  -3.2 9.16e-01    -  1.00e+00 5.89e-01h  1
+  15  3.2567665e+00 1.54e-03 2.23e+02  -3.2 4.67e-01    -  1.00e+00 6.99e-01h  1
+  16  3.1697521e+00 2.66e-05 7.62e-01  -3.8 1.52e-01    -  1.00e+00 1.00e+00h  1
+  17  3.1626422e+00 4.75e-04 1.19e+03  -3.3 2.92e+00    -  1.00e+00 2.78e-01h  1
+  18  3.0651455e+00 6.29e-05 3.11e-01  -3.8 1.94e-01    -  1.00e+00 1.00e+00h  1
+  19  3.0230138e+00 2.99e-05 6.71e-01  -4.1 3.41e-01    -  1.00e+00 1.00e+00h  1
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+  20  2.9959383e+00 1.20e-05 9.04e-02  -4.3 4.31e-01    -  1.00e+00 1.00e+00h  1
+  21  3.0181966e+00 7.57e-06 8.52e-02  -4.1 2.81e-01    -  1.00e+00 1.00e+00h  1
+  22  2.9971242e+00 9.74e-06 8.75e-02  -4.3 3.39e-01    -  1.00e+00 1.00e+00h  1
+  23  2.9880162e+00 9.70e-06 3.05e+02  -4.6 5.30e-01    -  1.00e+00 6.59e-01h  1
+  24  2.9808640e+00 9.92e-06 4.44e+02  -4.8 1.04e+00    -  1.00e+00 5.93e-01h  1
+  25  2.9766892e+00 8.33e-06 7.55e+02  -5.0 1.45e+00    -  1.00e+00 4.10e-01h  1
+  26  2.9734975e+00 7.30e-06 1.01e+03  -5.3 1.96e+00    -  1.00e+00 3.31e-01h  1
+  27  2.9702423e+00 5.25e-06 9.10e+02  -5.3 1.19e+00    -  1.00e+00 4.99e-01h  1
+  28  2.9710317e+00 3.15e-07 3.06e-02  -5.0 3.20e-01    -  1.00e+00 1.00e+00h  1
+  29  2.9682341e+00 1.35e-06 4.58e-02  -5.2 4.74e-01    -  1.00e+00 1.00e+00h  1
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+  30  2.9669822e+00 4.07e-07 1.98e-02  -5.3 3.25e-01    -  1.00e+00 1.00e+00h  1
+  31  2.9656039e+00 6.70e-07 5.13e+02  -5.6 5.08e-01    -  1.00e+00 7.17e-01h  1
+  32  2.9669348e+00 3.74e-07 2.95e+02  -5.3 2.10e-01    -  7.88e-01 1.00e+00h  1
+  33  2.9657540e+00 4.97e-07 1.17e+03  -5.7 3.92e-01    -  1.00e+00 5.36e-01h  1
+  34  2.9645473e+00 3.99e-07 1.77e+02  -5.7 5.14e-01    -  7.25e-01 9.44e-01h  1
+  35  2.9639489e+00 3.15e-07 9.03e+02  -6.1 4.00e-01    -  1.00e+00 6.19e-01f  1
+  36  2.9635344e+00 3.15e-07 2.42e-02  -6.1 2.85e-01    -  1.00e+00 1.00e+00h  1
+  37  2.9631203e+00 3.15e-07 2.19e-02  -6.4 1.53e-01    -  1.00e+00 1.00e+00h  1
+  38  2.9629542e+00 3.15e-07 9.91e+02  -7.0 6.01e-01    -  1.00e+00 7.18e-01h  1
+  39  2.9628181e+00 3.15e-07 1.45e-02  -7.6 2.73e-01    -  1.00e+00 1.00e+00h  1
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+  40  2.9628041e+00 3.15e-07 2.77e+03  -9.1 9.83e-02    -  1.00e+00 5.90e-01h  1
+  41  2.9630152e+00 3.15e-07 1.12e+04  -6.6 4.36e-01    -  1.62e-01 1.00e+00f  1
+  42  2.9628745e+00 3.15e-07 5.31e+03  -7.2 4.86e-01    -  4.69e-03 8.99e-01h  1
+  43  2.9628732e+00 3.15e-07 4.65e+03  -7.2 1.32e-01    -  6.47e-01 1.25e-01f  4
+  44  2.9628651e+00 3.15e-07 3.11e-03  -7.2 1.28e-01    -  1.00e+00 1.00e+00h  1
+  45  2.9628166e+00 3.15e-07 1.48e-03  -7.9 1.41e-01    -  1.00e+00 1.00e+00h  1
+  46  2.9628074e+00 3.15e-07 7.80e-02  -9.0 2.38e-02    -  1.00e+00 9.36e-01h  1
+  47  2.9628060e+00 3.15e-07 9.24e-04  -9.7 7.02e-03    -  1.00e+00 9.93e-01h  1
+  48  2.9628059e+00 3.15e-07 3.06e-05 -10.9 2.34e-04    -  1.00e+00 1.00e+00h  1
+  49  2.9628069e+00 3.15e-07 3.19e-02  -8.9 2.01e-03    -  5.67e-01 1.00e+00h  1
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+  50  2.9628120e+00 3.15e-07 2.30e-03  -9.2 1.14e+00    -  5.10e-01 1.00e+00H  1
+  51  2.9628100e+00 3.15e-07 1.13e-04  -9.6 7.40e-01    -  1.00e+00 1.00e+00h  1
+  52  2.9628358e+00 3.15e-07 5.82e-02  -7.6 3.42e-01    -  9.67e-01 1.00e+00f  1
+  53  2.9628315e+00 3.15e-07 1.38e-05  -7.7 9.29e-02    -  1.00e+00 1.00e+00h  1
+  54  2.9628142e+00 3.15e-07 5.96e-02  -8.7 4.32e-02    -  1.00e+00 9.52e-01h  1
+  55  2.9628132e+00 3.15e-07 7.44e-06  -8.8 2.81e-02    -  1.00e+00 1.00e+00h  1
+  56  2.9628118e+00 3.15e-07 1.31e-04 -10.6 7.54e-03    -  1.00e+00 9.99e-01h  1
+  57  2.9628118e+00 3.15e-07 2.23e-07 -11.0 1.19e-03    -  1.00e+00 1.00e+00h  1
+  58  2.9628118e+00 3.15e-07 7.62e-09 -11.0 1.63e-04    -  1.00e+00 1.00e+00h  1
+  59  2.9628118e+00 3.15e-07 4.95e-10 -11.0 2.45e-05    -  1.00e+00 1.00e+00h  1
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+  60  2.9628118e+00 3.15e-07 8.24e-10 -11.0 3.75e-06    -  1.00e+00 1.00e+00h  1
+  61  2.9628118e+00 3.15e-07 1.22e-09 -11.0 5.92e-07    -  1.00e+00 1.00e+00h  1
+
+Number of Iterations....: 61
+
+                                   (scaled)                 (unscaled)
+Objective...............:   2.9628117836538674e+00    2.9628117836538674e+00
+Dual infeasibility......:   1.2229580373563664e-09    1.2229580373563664e-09
+Constraint violation....:   3.1524517346559477e-07    3.1524517346559477e-07
+Variable bound violation:   9.5235016539518824e-09    9.5235016539518824e-09
+Complementarity.........:   1.0000000821610998e-11    1.0000000821610998e-11
+Overall NLP error.......:   3.1524517346559477e-07    3.1524517346559477e-07
+
+
+Number of objective function evaluations             = 89
+Number of objective gradient evaluations             = 63
+Number of equality constraint evaluations            = 89
+Number of inequality constraint evaluations          = 89
+Number of equality constraint Jacobian evaluations   = 63
+Number of inequality constraint Jacobian evaluations = 63
+Number of Lagrangian Hessian evaluations             = 62
+Total seconds in IPOPT                               = 0.960
+
+EXIT: Solved To Acceptable Level.
+
+
+CPU Time Used: 0.969683000000000 secs
+
+
+*** The problem FAILED!
+
+
+iterIPOPTG = 61;
+runTimeIPOPT = 0.969683000000000;
+
+Hamiltonian is LINEAR with respect to control component 1 in phase 1
+Hamiltonian is LINEAR with respect to control component 2 in phase 1
+Hamiltonian is LINEAR with respect to control component 3 in phase 1
+NO variation in initial time of problem
+VARIATION in final time of problem
+H(tf) = -1.000000000003375e+00
+Hamiltonian is not an explicit function of time
+ -> H(t) = -1.000000000003375e+00
+
+
+Mesh Refinement Wrapper
+Using hp-PattersonRao mesh refinement technique
+Mesh error tolerance for phase 1 IS satisfied
+Maximum absolute error in an interval is 1.253151798676305e-06 (<= 1.000000000000000e-05 = meshTolG)
+Maximum mesh iteration reached: MeshIterG = 1 ( = maxMeshIterG = 1)
+runTimeCGPOPS = 1.065352000000000;
+Mesh error tolerance was MET on final mesh grid: MeshIterG = 1
+Mesh grid was refined using mesh refinement technique: hp-PattersonRao
+
+
+
+CPU Total Time Used: 1.065352000000000 secs
+
+iterIPOPTG = 61;
+ipoptTimeG = 0.404679000000000 secs
+
+derivativeSupplierG = Bicomplex-step
+
+
+
+
+
+
+
+
+
+
+

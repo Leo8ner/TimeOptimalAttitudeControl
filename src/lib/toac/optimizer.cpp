@@ -162,11 +162,11 @@ Optimizer::Optimizer(const Dynamics& dyn, bool fixed_step) :
         solver_opts = {
             {"print_level", 5},
             {"warm_start_init_point", "yes"},
-            //{"max_iter", 1000},
+            {"max_iter", 1000},
             {"mu_strategy", "adaptive"},
             {"tol", 1e-7},              // Main tolerance
             //{"jacobian_approximation", "finite-difference-values"}, // Use sparse Jacobian approximation
-            {"hessian_approximation", "limited-memory"}, // Use limited-memory approximation
+            //{"hessian_approximation", "limited-memory"}, // Use limited-memory approximation
         };
 
         // Set the objective function

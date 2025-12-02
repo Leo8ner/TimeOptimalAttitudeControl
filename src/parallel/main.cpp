@@ -1,5 +1,4 @@
 #include <toac/cuda_optimizer.h>
-#include <toac/casadi_callback.h>
 #include <helper_functions.h>
 
 using namespace casadi;

@@ -2,19 +2,11 @@
 #include <string>
 #include <filesystem>
 #include <casadi/casadi.hpp>
-#include <toac/casadi_callback.h>
 #include <toac/cuda_optimizer.h>
 
 using namespace casadi;
 
 int main(){
-
-    // Dynamics
-    //Dynamics dyn; // Create an instance of the Dynamics class
-    // create_dynamics(true); // Create an instance of the dynamics class
-    // Function dyn = get_dynamics(); // Get the dynamics function
-    // DynamicsCallback callback("F", true);
-    // Function dyn = callback;
 
     Function dyn = external("F", "libtoac_shared.so");
 

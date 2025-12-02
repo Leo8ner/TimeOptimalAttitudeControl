@@ -1540,6 +1540,7 @@ if __name__ == "__main__":
     # Determine the correct path
     # ------------------------------
     possible_paths = [
+        "../../../output/mcs/",
         "../../output/mcs/",
         "../output/mcs/",
         "output/mcs/"

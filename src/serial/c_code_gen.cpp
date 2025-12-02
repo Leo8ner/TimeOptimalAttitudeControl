@@ -51,7 +51,6 @@ void add_stats_prints(const std::string& filepath) {
     file_out << content;
     file_out.close();
     
-    std::cout << "Successfully added print statements for all stats fields!" << std::endl;
 }
 
 int main(){
