@@ -112,16 +112,32 @@ cmake ..
 make -j$(nproc)
 ```
 
-#### Build with Custom Paths
+#### Build Options with Default Values
 ```bash
-cmake \
+  -DENABLE_CUDA=ON
+  -DENABLE_CGPOPS=ON
+  -DENABLE_SUNDIALS=OFF
   -DCASADI_INCLUDE_PATH=/opt/casadi/include/casadi \
-  -DCASADI_LIBRARY_PATH=/opt/casadi/lib \
-  -DCUDA_TOOLKIT_ROOT_DIR=/usr/local/cuda \
-  -D
-  ..
-make -j$(nproc)
+  -DCASADI_LIBRARY_PATH= \
+  -DCGPOPS_ROOT=/home/leo8ner/cgpops
+  -DSUNDIALS_ROOT=/usr/local/sundials-double
+  -DIPOPT_INCLUDE_PATH=/usr/include/coin
+  -DIPOPT_LIBRARY_PATH=
+
 ```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `ENABLE_CUDA` | `ON` | Enable CUDA acceleration for parallel/PSO algorithms |
+| `ENABLE_SUNDIALS` | `OFF` | Enable SUNDIALS CVODES integration (requires CUDA) |
+| `ENABLE_CGPOPS` | `ON` | Enable CGPOPS pseudospectral solver |
+| `CASADI_INCLUDE_PATH` | `/usr/local/include/casadi` | CasADi header directory |
+| `CASADI_LIBRARY_PATH` | (auto-detect) | CasADi library directory |
+| `SUNDIALS_ROOT` | `/usr/local/sundials-double` | SUNDIALS installation root |
+| `IPOPT_INCLUDE_PATH` | `/usr/include/coin` | IPOPT header directory |
+| `IPOPT_LIBRARY_PATH` | (auto-detect) | IPOPT library directory |
+| `CGPOPS_ROOT` | `/home/leo8ner/cgpops` | CGPOPS installation root |
+
 
 #### Build without CUDA (Serial only)
 ```bash
@@ -149,20 +165,6 @@ cmake \
 make -j$(nproc)
 ```
 
-## Build Configuration Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `ENABLE_CUDA` | `ON` | Enable CUDA acceleration for parallel/PSO algorithms |
-| `ENABLE_SUNDIALS` | `OFF` | Enable SUNDIALS CVODES integration (requires CUDA) |
-| `ENABLE_CGPOPS` | `ON` | Enable CGPOPS pseudospectral solver |
-| `CASADI_INCLUDE_PATH` | `/usr/local/include/casadi` | CasADi header directory |
-| `CASADI_LIBRARY_PATH` | (auto-detect) | CasADi library directory |
-| `SUNDIALS_ROOT` | `/usr/local/sundials-double` | SUNDIALS installation root |
-| `IPOPT_INCLUDE_PATH` | `/usr/include/coin` | IPOPT header directory |
-| `IPOPT_LIBRARY_PATH` | (auto-detect) | IPOPT library directory |
-| `CGPOPS_ROOT` | `/home/leo8ner/cgpops` | CGPOPS installation root |
-
 ### Configuration Examples
 ```bash
 # Minimal build (serial only, no GPU)
@@ -175,7 +177,17 @@ cmake -DENABLE_CUDA=ON -DENABLE_SUNDIALS=ON -DENABLE_CGPOPS=ON ..
 
 ### Quick Start
 
-#### Generate Trajectory with Serial Solver
+#### Generate Trajectory
+```bash
+cd build
+make
+```
+
+This will:
+1. Compile all the code without C-code generation
+
+
+#### Generate Trajectory
 ```bash
 cd build
 make everything
@@ -188,6 +200,7 @@ This will:
 
 #### Run Serial C code generation
 ```bash
+cd build
 make serial 
 ```
 
@@ -221,7 +234,37 @@ This will:
 # Visualize results
 ./plot_mcs
 ```
+### INPUTS ###
 
+Every executable accepts an initial state and final state as inputs.
+They should correspond to:
+ "phi_i,theta_i,psi_i,wx_i,wy_i,wz_i" "phi_f,theta_f,psi_f,wx_f,wy_f,wz_f" all in degrees(/s)
+
+```bash
+#### Run Single CGPOPS
+./run_cgpops "0,0,0,0,0,0" "180,0,0,0,0,0"
+
+#### Run Optimized c-code Serial
+./SerialCodeGen "0,0,0,0,0,0" "180,0,0,0,0,0"
+
+#### Run Optimized c-code Parallel
+./ParallelCodeGen "0,0,0,0,0,0" "180,0,0,0,0,0"
+
+#### Run standalone PSO
+./PSO "0,0,0,0,0,0" "180,0,0,0,0,0"
+
+#### Run PSO with optimized serial solver
+./PSOwithSerial "0,0,0,0,0,0" "180,0,0,0,0,0"
+
+#### Run PSO Tuning
+./PSO_TIME
+./PSO_TUNER
+./GetPSOparams
+
+### Generate 1000 LHS Samples
+./GenerateSamples 1000
+./GeneratePSOParamsSamples 1000
+```
 ### Custom Targets
 
 | Target | Description |
@@ -235,13 +278,13 @@ This will:
 ### Executables
 
 #### Serial Execution
-- `SerialGenerateCode` - Generate optimized C solver code
-- `SerialMain` - Run single trajectory optimization
-- `SerialCodeGen` - Run optimization with generated code
+- `SerialGenerateCode` - Generate optimized C solver code 
+- `SerialMain` - Run single trajectory optimization without optimized C code
+- `SerialCodeGen` - Run optimization with generated C code
 
 #### Parallel Execution (requires CUDA)
-- `ParGenerateCode` - Generate parallel solver code
-- `ParallelMain` - Run parallel trajectory optimization
+- `ParGenerateCode` - Generate parallel solver C code
+- `ParallelMain` - Run parallel trajectory optimization without C code
 - `ParallelCodeGen` - Run parallel optimization with generated code
 
 #### PSO Algorithms (requires CUDA)
@@ -249,12 +292,14 @@ This will:
 - `PSOwithSerial` - PSO warm-start + NLP refinement
 
 #### Monte Carlo Analysis
-- `GenerateSamples` - Generate random initial conditions
+- `GenerateSamples` - Generate initial conditions using LHS
+- `GeneratePSOParamsSamples` - Generates pso parameter sets using LHS
 - `MCS_NO_PSO` - Baseline direct transcription
 - `MCS_PSO_FULL` - Full PSO initialization
 - `MCS_PSO_STO` - Stochastic PSO variant
 - `PSO_TUNER` - PSO hyperparameter optimization
 - `PSO_TIME` - PSO timing benchmarks
+- `GetPSOparams` - Gives the best PSO parameters out of the PSO_TUNER
 - `plot_mcs` - Visualization tool
 
 #### CGPOPS Integration (requires IPOPT and CGPOPS)
@@ -317,7 +362,8 @@ TimeOptimalAttitudeControl/
 │   │   ├── pso_time.cpp
 │   │   └── pso_tuner.cpp
 │   └── cgpops/                 # CGPOPS wrapper
-│       └── cgpops_wrapper.cpp
+│       |── cgpops_wrapper.cpp
+|       └── cgpopsFuncDef.cpp  
 ├── build/                      # Build artifacts (generated)
 ├── code_gen/                   # Generated solver code
 ├── input/                      # Input data files
